@@ -37,14 +37,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4">
-      {/* Header */}
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-blue-400">📈 Stock AI Advisor</h1>
-          <p className="text-gray-400 mt-1">Professional analysis for Day Trade • Swing Trade • Sell Put</p>
+          <h1 className="text-3xl font-bold text-blue-400">Stock AI Advisor</h1>
+          <p className="text-gray-400 mt-1">Day Trade • Swing Trade • Sell Put</p>
         </div>
 
-        {/* Search */}
         <div className="flex gap-2 mb-6">
           <input
             className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-blue-400"
@@ -62,11 +60,14 @@ export default function Home() {
           </button>
         </div>
 
-        {error && <div className="bg-red-900 border border-red-500 rounded-lg p-4 mb-4">{error}</div>}
+        {error && (
+          <div className="bg-red-900 border border-red-500 rounded-lg p-4 mb-4">
+            {error}
+          </div>
+        )}
 
         {result && (
           <div className="space-y-4">
-            {/* Main verdict */}
             <div className="bg-gray-900 rounded-xl p-6 border border-gray-700">
               <div className="flex justify-between items-start">
                 <div>
@@ -83,9 +84,8 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Sell Put Box */}
             <div className={`rounded-xl p-5 border ${result.sellPut.safe ? "bg-green-950 border-green-500" : "bg-red-950 border-red-500"}`}>
-              <h3 className="font-bold text-lg mb-3">💰 Sell Put Analysis</h3>
+              <h3 className="font-bold text-lg mb-3">Sell Put Analysis</h3>
               <p className="text-xl font-bold mb-3">{result.sellPut.recommendation}</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-black bg-opacity-30 rounded-lg p-3">
@@ -101,9 +101,8 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Trading levels */}
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-700">
-              <h3 className="font-bold text-lg mb-3">🎯 Trading Levels</h3>
+              <h3 className="font-bold text-lg mb-3">Trading Levels</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-gray-800 rounded-lg p-3">
                   <p className="text-gray-400 text-sm">Entry</p>
@@ -114,4 +113,10 @@ export default function Home() {
                   <p className="text-red-400 font-bold">${result.trading.stopLoss}</p>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-3">
-                  <p
+                  <p className="text-gray-400 text-sm">Target 1 (+5%)</p>
+                  <p className="text-green-400 font-bold">${result.trading.target1}</p>
+                </div>
+                <div className="bg-gray-800 rounded-lg p-3">
+                  <p className="text-gray-400 text-sm">Target 2 (+10%)</p>
+                  <p className="text-green-400 font-bold">${result.trading.target2}</p>
+                </div>
