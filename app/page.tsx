@@ -7,11 +7,15 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [lang, setLang] = useState<"vi" | "en">("vi");
+  const [scanning, setScanning] = useState(false);
+  const [scanResults, setScanResults] = useState<any[]>([]);
 
   const t = (vi: string, en: string) => lang === "vi" ? vi : en;
 
-  const analyze = async () => {
-    if (!symbol) return;
+  const analyze = async (sym?: string) => {
+    const s = sym || symbol;
+    if (!s) return;
+    if (sym) setSymbol(sym);
     setLoading(true);
     setError("");
     setResult(null);
@@ -19,7 +23,7 @@ export default function Home() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol }),
+        body: JSON.stringify({ symbol: s }),
       });
       const data = await res.json();
       if (data.error) setError(data.error);
@@ -28,6 +32,16 @@ export default function Home() {
       setError(t("Lỗi kết nối", "Connection error"));
     }
     setLoading(false);
+  };
+
+  const runScanner = async () => {
+    setScanning(true);
+    try {
+      const res = await fetch("/api/scanner");
+      const data = await res.json();
+      setScanResults(data.stocks || []);
+    } catch {}
+    setScanning(false);
   };
 
   const verdictColor: Record<string, string> = {
@@ -41,6 +55,18 @@ export default function Home() {
   const scoreColor = (s: number) =>
     s >= 80 ? "text-green-400" : s >= 68 ? "text-green-300" :
     s >= 55 ? "text-yellow-400" : s >= 40 ? "text-orange-400" : "text-red-400";
+
+  const companyInfo: Record<string, any> = {
+    NVDA: { name: "NVIDIA Corporation", sector: t("Bán dẫn · AI · Công nghệ", "Semiconductors · AI · Tech"), cap: "$3.2T", pe: "65x", rev: "$96.3B", profit: "$53.0B", desc: t("NVIDIA dẫn đầu chip AI với GPU H100/H200. Doanh thu tăng 122% YoY. Kiến trúc Blackwell tạo động lực tăng trưởng mạnh 2025-2026. Độc quyền thị trường AI datacenter.", "NVIDIA leads AI chips with H100/H200 GPUs. Revenue up 122% YoY. Blackwell architecture drives strong growth 2025-2026. Dominates AI datacenter market."), growth: 5, compete: 4, risk: 3, potential: 5 },
+    AAPL: { name: "Apple Inc.", sector: t("Công nghệ · Điện thoại · Dịch vụ", "Technology · Mobile · Services"), cap: "$3.0T", pe: "32x", rev: "$383B", profit: "$97B", desc: t("Apple dẫn đầu thị trường smartphone cao cấp. Mảng Services tăng trưởng mạnh với biên lợi nhuận cao. Hệ sinh thái khép kín tạo khách hàng trung thành.", "Apple leads premium smartphone market. Services segment growing strongly with high margins. Closed ecosystem creates loyal customers."), growth: 4, compete: 5, risk: 2, potential: 4 },
+    TSLA: { name: "Tesla Inc.", sector: t("Xe điện · Năng lượng · AI", "EV · Energy · AI"), cap: "$800B", pe: "70x", rev: "$97B", profit: "$7.9B", desc: t("Tesla dẫn đầu thị trường xe điện toàn cầu. FSD và Robotaxi là catalysts tăng trưởng lớn. Cạnh tranh từ BYD và xe điện Trung Quốc ngày càng tăng.", "Tesla leads global EV market. FSD and Robotaxi are major growth catalysts. Competition from BYD and Chinese EVs increasing."), growth: 4, compete: 3, risk: 4, potential: 5 },
+    META: { name: "Meta Platforms Inc.", sector: t("Mạng xã hội · Quảng cáo · AI", "Social Media · Advertising · AI"), cap: "$1.6T", pe: "28x", rev: "$134B", profit: "$39B", desc: t("Meta thống trị mạng xã hội với Facebook, Instagram, WhatsApp. AI cải thiện quảng cáo đáng kể. Metaverse vẫn còn rủi ro dài hạn.", "Meta dominates social media with Facebook, Instagram, WhatsApp. AI significantly improving ads. Metaverse still a long-term risk."), growth: 4, compete: 4, risk: 2, potential: 4 },
+    MSFT: { name: "Microsoft Corporation", sector: t("Cloud · AI · Phần mềm", "Cloud · AI · Software"), cap: "$3.1T", pe: "35x", rev: "$245B", profit: "$88B", desc: t("Microsoft dẫn đầu cloud với Azure. Tích hợp AI Copilot vào toàn bộ sản phẩm. Quan hệ OpenAI tạo lợi thế cạnh tranh dài hạn.", "Microsoft leads cloud with Azure. AI Copilot integrated across all products. OpenAI relationship creates long-term competitive advantage."), growth: 4, compete: 5, risk: 1, potential: 4 },
+    PLTR: { name: "Palantir Technologies", sector: t("AI · Phân tích dữ liệu · Quốc phòng", "AI · Data Analytics · Defense"), cap: "$200B", pe: "280x", rev: "$2.8B", profit: "$450M", desc: t("Palantir dẫn đầu AI cho chính phủ và doanh nghiệp. AIP platform tăng trưởng nhanh. Định giá cao là rủi ro lớn nhất.", "Palantir leads AI for government and enterprise. AIP platform growing rapidly. High valuation is biggest risk."), growth: 5, compete: 4, risk: 4, potential: 5 },
+    SPCX: { name: "SpaceX", sector: t("Tên lửa · Vệ tinh · AI · Starlink", "Rockets · Satellites · AI · Starlink"), cap: "$2.1T", pe: "N/A", rev: "$18.7B", profit: "-$4.2B", desc: t("SpaceX IPO tháng 6/2026. Dẫn đầu phóng tên lửa thương mại và Starlink. Starship là game-changer cho du hành vũ trụ. Còn lỗ nhưng tiềm năng rất lớn.", "SpaceX IPO June 2026. Leads commercial rocket launches and Starlink. Starship is a game-changer for space travel. Still losing money but huge potential."), growth: 5, compete: 5, risk: 4, potential: 5 },
+  };
+
+  const company = result ? (companyInfo[result.symbol] || null) : null;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-3 font-sans">
@@ -67,20 +93,43 @@ export default function Home() {
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
             onKeyDown={(e) => e.key === "Enter" && analyze()}
           />
-          <button onClick={analyze} disabled={loading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-6 py-2.5 rounded-lg font-medium">
+          <button onClick={() => analyze()} disabled={loading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-6 py-2.5 rounded-lg font-medium">
             {loading ? t("Đang phân tích...", "Analyzing...") : t("Phân tích", "Analyze")}
           </button>
         </div>
 
         {error && <div className="bg-red-900 border border-red-700 rounded-lg p-3 mb-4 text-sm">{error}</div>}
 
+        {/* Scanner */}
+        <div className="bg-gray-900 rounded-xl p-3 border border-gray-800 mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-xs font-medium text-gray-400">{t("STOCK SCANNER — Cổ phiếu tốt nhất hôm nay (Điểm 80-100)", "STOCK SCANNER — Best stocks today (Score 80-100)")}</div>
+            <button onClick={runScanner} disabled={scanning} className="bg-blue-800 hover:bg-blue-700 disabled:opacity-50 px-3 py-1 rounded text-xs font-medium">
+              {scanning ? t("Đang quét...", "Scanning...") : t("Quét ngay", "Scan Now")}
+            </button>
+          </div>
+          {scanResults.length > 0 ? (
+            <div className="grid grid-cols-5 gap-2">
+              {scanResults.slice(0, 10).map((s: any) => (
+                <button key={s.symbol} onClick={() => analyze(s.symbol)} className="bg-gray-800 hover:bg-gray-700 rounded-lg p-2 text-left border border-gray-700 hover:border-blue-600 transition-colors">
+                  <div className="font-medium text-sm">{s.symbol}</div>
+                  <div className="text-xs text-green-400">{t("MUA MẠNH", "STRONG BUY")}</div>
+                  <div className="text-xs mt-1">${s.price}</div>
+                  <div className="text-xs text-gray-400">SP: {s.sellPutSafe ? t("An toàn", "Safe") : t("Cẩn thận", "Caution")}</div>
+                  <div className="bg-green-800 text-xs px-1.5 py-0.5 rounded mt-1 inline-block font-medium">{s.score}</div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 text-center py-2">{t("Bấm 'Quét ngay' để tìm cổ phiếu tốt nhất hôm nay", "Click 'Scan Now' to find best stocks today")}</div>
+          )}
+        </div>
+
         {result && (
           <div className="space-y-3">
 
-            {/* Row 1: Main info + Summary */}
+            {/* Row 1: Price + Summary */}
             <div className="grid grid-cols-2 gap-3">
-
-              {/* Left: Price + Score */}
               <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -112,14 +161,13 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Right: Action Summary */}
               <div className="bg-gray-900 rounded-xl p-4 border-2 border-blue-800 space-y-2">
-                <div className="text-sm font-medium text-blue-400 mb-2">{t("TỔNG KẾT KHUYẾN NGHỊ", "ACTION SUMMARY")}</div>
+                <div className="text-xs font-medium text-blue-400 mb-2">{t("TỔNG KẾT KHUYẾN NGHỊ", "ACTION SUMMARY")}</div>
                 {[
                   { label: t("MUA CỔ PHIẾU", "BUY SHARES"), sub: t(`Vào $${result.trading.entry} · Stop $${result.trading.stopLoss}`, `Entry $${result.trading.entry} · Stop $${result.trading.stopLoss}`), ok: result.score >= 68 },
                   { label: "SELL PUT", sub: result.sellPut.timing, ok: result.sellPut.safe },
-                  { label: "SELL CALL", sub: t(result.sellCall.recommendation, result.sellCall.recommendation), ok: result.sellCall.safe },
-                  { label: t("SHORT / BÁN KHỐNG", "SHORT / SELL SHORT"), sub: t("Chỉ khi score < 40 và xu hướng giảm rõ", "Only when score < 40 and clear downtrend"), ok: result.score < 40 },
+                  { label: "SELL CALL", sub: lang === "vi" ? result.sellCall.recommendation : result.sellCall.recommendation, ok: result.sellCall.safe },
+                  { label: t("SHORT / BÁN KHỐNG", "SHORT / SELL SHORT"), sub: t("Chỉ khi score < 40", "Only when score < 40"), ok: result.score < 40 },
                 ].map((item, i) => (
                   <div key={i} className={`flex justify-between items-center rounded-lg px-3 py-2 ${item.ok ? "bg-green-950 border border-green-800" : "bg-red-950 border border-red-900"}`}>
                     <div>
@@ -134,52 +182,35 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Row 2: Trading Plan */}
+            {/* Trading Plan */}
             <div className="bg-gray-900 rounded-xl p-4 border border-blue-900">
-              <div className="text-sm font-medium text-blue-400 mb-3">{t("KẾ HOẠCH GIAO DỊCH — Giá vào và mục tiêu", "TRADING PLAN — Entry and targets")}</div>
+              <div className="text-xs font-medium text-blue-400 mb-3">{t("KẾ HOẠCH GIAO DỊCH — Giá vào và mục tiêu", "TRADING PLAN — Entry and targets")}</div>
               <div className="grid grid-cols-6 gap-2">
-                <div className="bg-red-950 border border-red-800 rounded-lg p-2.5 text-center">
-                  <div className="text-xs text-red-400">{t("Cắt lỗ", "Stop Loss")}</div>
-                  <div className="text-sm font-bold text-red-300 mt-1">${result.trading.stopLoss}</div>
-                  <div className="text-xs text-red-500">{(((parseFloat(result.trading.stopLoss) - parseFloat(result.price)) / parseFloat(result.price)) * 100).toFixed(1)}%</div>
-                </div>
-                <div className="bg-blue-950 border border-blue-800 rounded-lg p-2.5 text-center">
-                  <div className="text-xs text-blue-400">{t("Vào lệnh", "Entry")}</div>
-                  <div className="text-sm font-bold text-blue-300 mt-1">${result.trading.entry}</div>
-                  <div className="text-xs text-blue-500">{t("Hiện tại", "Current")}</div>
-                </div>
-                <div className="bg-green-950 border border-green-900 rounded-lg p-2.5 text-center">
-                  <div className="text-xs text-green-500">{t("Mục tiêu 1", "Target 1")}</div>
-                  <div className="text-sm font-bold text-green-300 mt-1">${result.trading.target1}</div>
-                  <div className="text-xs text-green-600">+5% · {t("Chốt 30%", "Take 30%")}</div>
-                </div>
-                <div className="bg-green-950 border border-green-900 rounded-lg p-2.5 text-center">
-                  <div className="text-xs text-green-400">{t("Mục tiêu 2 ★", "Target 2 ★")}</div>
-                  <div className="text-sm font-bold text-green-300 mt-1">${result.trading.target2}</div>
-                  <div className="text-xs text-green-600">+10% · {t("Chốt 40%", "Take 40%")}</div>
-                </div>
-                <div className="bg-green-950 border border-green-900 rounded-lg p-2.5 text-center">
-                  <div className="text-xs text-green-400">{t("Mục tiêu 3", "Target 3")}</div>
-                  <div className="text-sm font-bold text-green-300 mt-1">${result.trading.target3}</div>
-                  <div className="text-xs text-green-600">+15% · {t("Chốt 30%", "Take 30%")}</div>
-                </div>
-                <div className="bg-blue-950 border border-blue-900 rounded-lg p-2.5 text-center">
-                  <div className="text-xs text-blue-400">{t("Dài hạn", "Long term")}</div>
-                  <div className="text-sm font-bold text-blue-300 mt-1">${result.trading.targetLong}</div>
-                  <div className="text-xs text-blue-600">+30% · 6-12{t("th", "mo")}</div>
-                </div>
+                {[
+                  { label: t("Cắt lỗ", "Stop Loss"), val: "$" + result.trading.stopLoss, sub: (((parseFloat(result.trading.stopLoss) - parseFloat(result.price)) / parseFloat(result.price)) * 100).toFixed(1) + "%", cls: "bg-red-950 border-red-800 text-red-300" },
+                  { label: t("Vào lệnh", "Entry"), val: "$" + result.trading.entry, sub: t("Hiện tại", "Current"), cls: "bg-blue-950 border-blue-800 text-blue-300" },
+                  { label: t("Mục tiêu 1", "Target 1"), val: "$" + result.trading.target1, sub: "+5% · " + t("Chốt 30%", "Take 30%"), cls: "bg-green-950 border-green-900 text-green-300" },
+                  { label: t("Mục tiêu 2 ★", "Target 2 ★"), val: "$" + result.trading.target2, sub: "+10% · " + t("Chốt 40%", "Take 40%"), cls: "bg-green-950 border-green-900 text-green-300" },
+                  { label: t("Mục tiêu 3", "Target 3"), val: "$" + result.trading.target3, sub: "+15% · " + t("Chốt 30%", "Take 30%"), cls: "bg-green-950 border-green-900 text-green-300" },
+                  { label: t("Dài hạn", "Long term"), val: "$" + result.trading.targetLong, sub: "+30% · 6-12" + t("th", "mo"), cls: "bg-blue-950 border-blue-900 text-blue-300" },
+                ].map((item, i) => (
+                  <div key={i} className={`${item.cls} border rounded-lg p-2.5 text-center`}>
+                    <div className="text-xs opacity-70">{item.label}</div>
+                    <div className="text-sm font-bold mt-1">{item.val}</div>
+                    <div className="text-xs opacity-60 mt-0.5">{item.sub}</div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Row 3: Buy/Avoid reasons + Sell Put */}
+            {/* Buy/Avoid/SellPut */}
             <div className="grid grid-cols-3 gap-3">
-
               <div className="bg-green-950 rounded-xl p-3 border border-green-900">
                 <div className="text-xs font-medium text-green-400 mb-2">{t("TẠI SAO NÊN MUA?", "WHY BUY?")}</div>
                 <div className="space-y-1.5">
                   {result.reasons_buy.map((r: string, i: number) => (
                     <div key={i} className="flex gap-1.5 items-start">
-                      <span className="text-green-400 text-xs mt-0.5 flex-shrink-0">✓</span>
+                      <span className="text-green-400 text-xs flex-shrink-0 mt-0.5">✓</span>
                       <span className="text-xs text-green-100 leading-relaxed">{r}</span>
                     </div>
                   ))}
@@ -192,7 +223,7 @@ export default function Home() {
                 <div className="space-y-1.5">
                   {result.reasons_avoid.map((r: string, i: number) => (
                     <div key={i} className="flex gap-1.5 items-start">
-                      <span className="text-red-400 text-xs mt-0.5 flex-shrink-0">✗</span>
+                      <span className="text-red-400 text-xs flex-shrink-0 mt-0.5">✗</span>
                       <span className="text-xs text-red-100 leading-relaxed">{r}</span>
                     </div>
                   ))}
@@ -203,18 +234,25 @@ export default function Home() {
               <div className={`rounded-xl p-3 border ${result.sellPut.safe ? "bg-green-950 border-green-800" : "bg-gray-900 border-gray-800"}`}>
                 <div className="text-xs font-medium text-green-400 mb-2">SELL PUT {t("CHI TIẾT", "DETAILS")}</div>
                 <div className={`text-sm font-bold mb-2 ${result.sellPut.safe ? "text-green-300" : "text-red-400"}`}>{result.sellPut.recommendation}</div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between"><span className="text-gray-400">{t("Thời gian", "Timing")}</span><span className="text-white text-right">{result.sellPut.timing}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">{t("Strike thận trọng", "Conservative strike")}</span><span className="text-green-300">${result.sellPut.strikeConservative}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">{t("Strike ATR", "ATR strike")}</span><span className="text-yellow-300">${result.sellPut.strikeATR}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">IV Rank</span><span className={parseFloat(result.sellPut.ivRank) > 50 ? "text-green-300" : "text-yellow-300"}>{result.sellPut.ivRank}%</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">{t("Hỗ trợ", "Support")}</span><span className="text-blue-300">${result.indicators.support}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">{t("Kháng cự", "Resistance")}</span><span className="text-orange-300">${result.indicators.resistance}</span></div>
+                <div className="space-y-1 text-xs">
+                  {[
+                    [t("Thời gian", "Timing"), result.sellPut.timing],
+                    [t("Strike thận trọng", "Conservative"), "$" + result.sellPut.strikeConservative],
+                    [t("Strike ATR", "ATR strike"), "$" + result.sellPut.strikeATR],
+                    ["IV Rank", result.sellPut.ivRank + "%"],
+                    [t("Hỗ trợ", "Support"), "$" + result.indicators.support],
+                    [t("Kháng cự", "Resistance"), "$" + result.indicators.resistance],
+                  ].map(([k, v], i) => (
+                    <div key={i} className="flex justify-between">
+                      <span className="text-gray-400">{k}</span>
+                      <span className="text-white font-medium">{v}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* Row 4: All indicators */}
+            {/* Indicators */}
             <div className="bg-gray-900 rounded-xl p-3 border border-gray-800">
               <div className="text-xs font-medium text-gray-400 mb-2">{t("CHỈ BÁO KỸ THUẬT ĐẦY ĐỦ", "FULL TECHNICAL INDICATORS")}</div>
               <div className="grid grid-cols-6 gap-2">
@@ -236,7 +274,7 @@ export default function Home() {
                   { label: "DI-", value: result.indicators.diMinus, color: "text-red-400" },
                   { label: "OBV", value: result.indicators.obvTrend, color: result.indicators.obvTrend === "bullish" ? "text-green-400" : "text-red-400" },
                   { label: "IV Rank", value: result.indicators.ivRank + "%", color: parseFloat(result.indicators.ivRank) > 50 ? "text-green-400" : "text-yellow-400" },
-                  { label: t("Vol Ratio", "Vol Ratio"), value: result.indicators.volumeRatio + "x", color: parseFloat(result.indicators.volumeRatio) > 1.5 ? "text-green-400" : "text-white" },
+                  { label: "Vol Ratio", value: result.indicators.volumeRatio + "x", color: parseFloat(result.indicators.volumeRatio) > 1.5 ? "text-green-400" : "text-white" },
                 ].map((item, i) => (
                   <div key={i} className="bg-gray-800 rounded-lg p-2">
                     <div className="text-xs text-gray-500">{item.label}</div>
@@ -246,7 +284,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Row 5: Volume + Signals */}
+            {/* Volume + Signals */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-gray-900 rounded-xl p-3 border border-gray-800">
                 <div className="text-xs font-medium text-gray-400 mb-2">{t("VOLUME MUA/BÁN TRONG NGÀY", "BUY/SELL VOLUME TODAY")}</div>
@@ -284,9 +322,9 @@ export default function Home() {
 
               <div className="bg-gray-900 rounded-xl p-3 border border-gray-800">
                 <div className="text-xs font-medium text-gray-400 mb-2">{t("TÍN HIỆU GIAO DỊCH", "TRADING SIGNALS")}</div>
-                <div className="space-y-1 max-h-40 overflow-y-auto">
+                <div className="space-y-1 max-h-36 overflow-y-auto">
                   {result.signals.map((signal: string, i: number) => {
-                    const isBull = signal.includes("bullish") || signal.includes("above") || signal.includes("golden") || signal.includes("oversold") || signal.includes("strong") || signal.includes("high volume") || signal.includes("OBV bull");
+                    const isBull = signal.includes("bullish") || signal.includes("above") || signal.includes("golden") || signal.includes("oversold") || signal.includes("strong") || signal.includes("high volume");
                     return (
                       <div key={i} className={`flex items-start gap-1.5 p-1.5 rounded text-xs ${isBull ? "bg-green-950 text-green-300" : "bg-red-950 text-red-300"}`}>
                         <span className="flex-shrink-0">{isBull ? "✓" : "✗"}</span>
@@ -297,6 +335,91 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            {/* Company Info */}
+            {company && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-900 rounded-xl p-3 border border-gray-800">
+                  <div className="text-xs font-medium text-blue-400 mb-2">{t("THÔNG TIN CÔNG TY", "COMPANY INFO")}</div>
+                  <div className="text-sm font-medium text-blue-300 mb-0.5">{company.name}</div>
+                  <div className="text-xs text-gray-500 mb-3">{company.sector}</div>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {[
+                      [t("Vốn hóa", "Market Cap"), company.cap],
+                      ["P/E", company.pe],
+                      [t("Doanh thu", "Revenue"), company.rev],
+                      [t("Lợi nhuận", "Net Income"), company.profit],
+                    ].map(([k, v], i) => (
+                      <div key={i} className="bg-gray-800 rounded p-2">
+                        <div className="text-xs text-gray-500">{k}</div>
+                        <div className="text-xs font-medium">{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="bg-gray-800 rounded p-2 mb-3">
+                    <div className="text-xs text-gray-500 mb-1">{t("Phân tích chuyên sâu", "Deep analysis")}</div>
+                    <div className="text-xs text-gray-200 leading-relaxed">{company.desc}</div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {[
+                      [t("Tăng trưởng doanh thu", "Revenue growth"), company.growth, "green"],
+                      [t("Vị thế cạnh tranh", "Competitive position"), company.compete, "green"],
+                      [t("Rủi ro định giá", "Valuation risk"), company.risk, "red"],
+                      [t("Tiềm năng AI dài hạn", "Long-term AI potential"), company.potential, "green"],
+                    ].map(([label, score, color], i) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <span className="text-xs text-gray-400">{label as string}</span>
+                        <div className="flex gap-1">
+                          {[1,2,3,4,5].map(n => (
+                            <div key={n} className={`w-2 h-2 rounded-sm ${n <= (score as number) ? (color === "green" ? "bg-green-400" : "bg-red-400") : "bg-gray-700"}`} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-gray-900 rounded-xl p-3 border border-gray-800">
+                  <div className="text-xs font-medium text-gray-400 mb-2">{t("MỤC TIÊU THEO THỜI GIAN", "TARGETS BY TIMEFRAME")}</div>
+                  <div className="space-y-2">
+                    {[
+                      { label: t("Day Trade (1 ngày)", "Day Trade (1 day)"), target: "$" + (parseFloat(result.price) * 1.02).toFixed(2), pct: "+1% ~ +2%", color: "text-yellow-400", star: false },
+                      { label: t("Swing (5-15 ngày) ★", "Swing (5-15 days) ★"), target: "$" + result.trading.target1 + " ~ $" + result.trading.target2, pct: "+5% ~ +10%", color: "text-green-400", star: true },
+                      { label: t("Ngắn hạn (1-3 tháng)", "Short term (1-3 months)"), target: "$" + result.trading.target2 + " ~ $" + result.trading.target3, pct: "+10% ~ +15%", color: "text-green-400", star: false },
+                      { label: t("Dài hạn (6-12 tháng)", "Long term (6-12 months)"), target: "$" + result.trading.targetLong, pct: "+30%", color: "text-blue-400", star: false },
+                    ].map((item, i) => (
+                      <div key={i} className={`flex justify-between items-center rounded-lg p-2.5 ${item.star ? "bg-green-950 border border-green-900" : "bg-gray-800"}`}>
+                        <div className={`text-xs ${item.star ? "text-green-300 font-medium" : "text-gray-300"}`}>{item.label}</div>
+                        <div className="text-right">
+                          <div className={`text-xs font-medium ${item.color}`}>{item.target}</div>
+                          <div className="text-xs text-gray-500">{item.pct}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 border-t border-gray-800 pt-3">
+                    <div className="text-xs font-medium text-gray-400 mb-2">{t("TIỀM NĂNG ĐIỂM SỐ", "SCORE BREAKDOWN")}</div>
+                    <div className="space-y-1.5">
+                      {[
+                        [t("Kỹ thuật", "Technical"), result.score, "#3b82f6"],
+                        [t("Cơ bản", "Fundamental"), company ? Math.min(100, company.growth * 15 + company.compete * 5) : 50, "#4ade80"],
+                        [t("Thị trường", "Market"), 65, "#fbbf24"],
+                        [t("Momentum", "Momentum"), parseFloat(result.indicators.adx) > 25 ? 80 : 50, "#a78bfa"],
+                      ].map(([label, val, color], i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <div className="text-xs text-gray-500 w-20">{label as string}</div>
+                          <div className="flex-1 bg-gray-800 rounded h-3 overflow-hidden">
+                            <div className="h-3 rounded" style={{ width: (val as number) + "%", background: color as string }} />
+                          </div>
+                          <div className="text-xs font-medium w-8 text-right">{val as number}%</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
         )}
