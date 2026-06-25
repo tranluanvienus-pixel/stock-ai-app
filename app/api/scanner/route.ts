@@ -14,21 +14,43 @@ async function getStockData(symbol: string) {
 }
 
 function calcRSI(prices: number[], period = 14) {
-  let gains = 0, losses = 0;
+  if (prices.length < period + 1) return 50;
+
+  let avgGain = 0;
+  let avgLoss = 0;
+
   for (let i = 1; i <= period; i++) {
     const diff = prices[i] - prices[i - 1];
-    if (diff >= 0) gains += diff;
-    else losses += Math.abs(diff);
+    if (diff >= 0) avgGain += diff;
+    else avgLoss += Math.abs(diff);
   }
-  const rs = gains / (losses || 1);
+
+  avgGain /= period;
+  avgLoss /= period;
+
+  for (let i = period + 1; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) {
+      avgGain = (avgGain * (period - 1) + diff) / period;
+      avgLoss = (avgLoss * (period - 1)) / period;
+    } else {
+      avgGain = (avgGain * (period - 1)) / period;
+      avgLoss = (avgLoss * (period - 1) + Math.abs(diff)) / period;
+    }
+  }
+
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
 }
-
 function calcStochRSI(prices: number[], rsiPeriod = 14, stochPeriod = 14) {
+  if (prices.length < rsiPeriod + stochPeriod) return 50;
+
   const rsiValues: number[] = [];
   for (let i = rsiPeriod; i < prices.length; i++) {
-    rsiValues.push(calcRSI(prices.slice(i - rsiPeriod, i + 1)));
+    rsiValues.push(calcRSI(prices.slice(0, i + 1)));
   }
+
   if (rsiValues.length < stochPeriod) return 50;
   const recent = rsiValues.slice(-stochPeriod);
   const minRSI = Math.min(...recent);
