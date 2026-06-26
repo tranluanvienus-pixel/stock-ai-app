@@ -5,46 +5,43 @@ import { NextResponse } from "next/server";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
 
-// Yahoo v8 — lấy giá regular + after-hours/pre-market
+// Yahoo v7 quote — lấy giá regular + after-hours/pre-market chính xác
 async function getIndexPrice(symbol: string) {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    // Dùng v7 quote để lấy đầy đủ after-hours
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,postMarketPrice,postMarketChange,postMarketChangePercent,preMarketPrice,preMarketChange,preMarketChangePercent,marketState,regularMarketPreviousClose`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Referer": "https://finance.yahoo.com",
+      }
+    });
+    if (!res.ok) throw new Error("v7 failed");
     const json = await res.json();
-    const result = json?.chart?.result?.[0];
-    if (!result) return null;
+    const q = json?.quoteResponse?.result?.[0];
+    if (!q) throw new Error("no quote");
 
-    const meta = result.meta;
-    const closes = result.indicators.quote[0].close.filter((c: number) => c != null);
-    const regularPrice: number = meta.regularMarketPrice || closes[closes.length - 1];
-    const prev: number = closes[closes.length - 2] || closes[closes.length - 1];
-    const change = regularPrice - prev;
-    const changePct = prev ? (change / prev) * 100 : 0;
-
-    // After-hours hoặc pre-market từ Yahoo meta
-    const postPrice: number | null = meta.postMarketPrice || null;
-    const prePrice: number | null = meta.preMarketPrice || null;
-    const marketState: string = meta.marketState || "REGULAR";
+    const regularPrice: number = q.regularMarketPrice || 0;
+    const prev: number = q.regularMarketPreviousClose || regularPrice;
+    const change: number = q.regularMarketChange || (regularPrice - prev);
+    const changePct: number = q.regularMarketChangePercent || 0;
+    const marketState: string = q.marketState || "REGULAR";
 
     let afterHoursPrice: number | null = null;
     let afterHoursPct: number | null = null;
     let afterHoursLabel = "";
 
-    if (marketState === "POST" && postPrice && Math.abs(postPrice - regularPrice) > 0.01) {
-      afterHoursPrice = postPrice;
-      afterHoursPct = ((postPrice - regularPrice) / regularPrice) * 100;
+    if (q.postMarketPrice && Math.abs(q.postMarketPrice - regularPrice) > 0.01) {
+      afterHoursPrice = q.postMarketPrice;
+      afterHoursPct = q.postMarketChangePercent || ((q.postMarketPrice - regularPrice) / regularPrice) * 100;
       afterHoursLabel = "After-hours";
-    } else if (marketState === "PRE" && prePrice && Math.abs(prePrice - regularPrice) > 0.01) {
-      afterHoursPrice = prePrice;
-      afterHoursPct = ((prePrice - regularPrice) / regularPrice) * 100;
+    } else if (q.preMarketPrice && Math.abs(q.preMarketPrice - regularPrice) > 0.01) {
+      afterHoursPrice = q.preMarketPrice;
+      afterHoursPct = q.preMarketChangePercent || ((q.preMarketPrice - regularPrice) / regularPrice) * 100;
       afterHoursLabel = "Pre-market";
-    } else if (postPrice && Math.abs(postPrice - regularPrice) > 0.01) {
-      afterHoursPrice = postPrice;
-      afterHoursPct = ((postPrice - regularPrice) / regularPrice) * 100;
-      afterHoursLabel = "After-hours";
     }
 
-    // Giá hiệu dụng = after-hours nếu có
     const effectivePrice = afterHoursPrice || regularPrice;
     const effectiveChangePct = afterHoursPrice
       ? ((effectivePrice - prev) / prev) * 100
@@ -61,7 +58,22 @@ async function getIndexPrice(symbol: string) {
       effectiveChangePct,
       marketState,
     };
-  } catch { return null; }
+  } catch {
+    // Fallback về v8
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
+      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      if (!result) return null;
+      const closes = result.indicators.quote[0].close.filter((c: number) => c != null);
+      const regularPrice: number = result.meta.regularMarketPrice || closes[closes.length - 1];
+      const prev: number = closes[closes.length - 2] || regularPrice;
+      const change = regularPrice - prev;
+      const changePct = prev ? (change / prev) * 100 : 0;
+      return { price: regularPrice, change, changePct, afterHoursPrice: null, afterHoursPct: null, afterHoursLabel: "", effectivePrice: regularPrice, effectiveChangePct: changePct, marketState: "REGULAR" };
+    } catch { return null; }
+  }
 }
 
 // Polygon — tin tức thị trường với sentiment
