@@ -5,43 +5,46 @@ import { NextResponse } from "next/server";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
 
-// Lấy giá index từ Yahoo v8 + after-hours từ Polygon
-async function getIndexPrice(yahooSymbol: string, polygonSymbol: string) {
+// Yahoo v8 — lấy giá regular + after-hours/pre-market
+async function getIndexPrice(symbol: string) {
   try {
-    // Yahoo v8 — regular market data
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=5d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
     const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     const json = await res.json();
     const result = json?.chart?.result?.[0];
     if (!result) return null;
 
+    const meta = result.meta;
     const closes = result.indicators.quote[0].close.filter((c: number) => c != null);
-    const regularPrice = result.meta.regularMarketPrice || closes[closes.length - 1];
-    const prev = closes[closes.length - 2] || closes[closes.length - 1];
+    const regularPrice: number = meta.regularMarketPrice || closes[closes.length - 1];
+    const prev: number = closes[closes.length - 2] || closes[closes.length - 1];
     const change = regularPrice - prev;
     const changePct = prev ? (change / prev) * 100 : 0;
 
-    // Polygon — after-hours price
+    // After-hours hoặc pre-market từ Yahoo meta
+    const postPrice: number | null = meta.postMarketPrice || null;
+    const prePrice: number | null = meta.preMarketPrice || null;
+    const marketState: string = meta.marketState || "REGULAR";
+
     let afterHoursPrice: number | null = null;
     let afterHoursPct: number | null = null;
-    if (POLYGON_KEY) {
-      try {
-        const pRes = await fetch(
-          `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${polygonSymbol}?apiKey=${POLYGON_KEY}`
-        );
-        if (pRes.ok) {
-          const pJson = await pRes.json();
-          const t = pJson?.ticker;
-          const fmv = t?.fmv;
-          if (fmv && Math.abs(fmv - regularPrice) > 0.05) {
-            afterHoursPrice = fmv;
-            afterHoursPct = ((fmv - regularPrice) / regularPrice) * 100;
-          }
-        }
-      } catch {}
+    let afterHoursLabel = "";
+
+    if (marketState === "POST" && postPrice && Math.abs(postPrice - regularPrice) > 0.01) {
+      afterHoursPrice = postPrice;
+      afterHoursPct = ((postPrice - regularPrice) / regularPrice) * 100;
+      afterHoursLabel = "After-hours";
+    } else if (marketState === "PRE" && prePrice && Math.abs(prePrice - regularPrice) > 0.01) {
+      afterHoursPrice = prePrice;
+      afterHoursPct = ((prePrice - regularPrice) / regularPrice) * 100;
+      afterHoursLabel = "Pre-market";
+    } else if (postPrice && Math.abs(postPrice - regularPrice) > 0.01) {
+      afterHoursPrice = postPrice;
+      afterHoursPct = ((postPrice - regularPrice) / regularPrice) * 100;
+      afterHoursLabel = "After-hours";
     }
 
-    // Giá hiệu dụng = after-hours nếu có, không thì dùng regular
+    // Giá hiệu dụng = after-hours nếu có
     const effectivePrice = afterHoursPrice || regularPrice;
     const effectiveChangePct = afterHoursPrice
       ? ((effectivePrice - prev) / prev) * 100
@@ -53,8 +56,10 @@ async function getIndexPrice(yahooSymbol: string, polygonSymbol: string) {
       changePct,
       afterHoursPrice,
       afterHoursPct,
+      afterHoursLabel,
       effectivePrice,
       effectiveChangePct,
+      marketState,
     };
   } catch { return null; }
 }
@@ -124,9 +129,9 @@ async function getFearGreed() {
   return null;
 }
 
-// Groq AI — phân tích + dự báo ngày mai dùng giá THỰC TẾ (after-hours)
+// Groq AI
 async function getMarketAnalysis(params: {
-  spy: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null } | null;
+  spy: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null; afterHoursLabel: string } | null;
   qqq: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null } | null;
   dia: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null } | null;
   iwm: { effectivePrice: number; effectiveChangePct: number } | null;
@@ -141,37 +146,26 @@ async function getMarketAnalysis(params: {
 
   const spyPrice = params.spy?.effectivePrice || 0;
   const spyPct = params.spy?.effectiveChangePct || 0;
+  const hasAfterHours = !!params.spy?.afterHoursPrice;
   const marketDir = spyPct >= 0 ? "TĂNG" : "GIẢM";
 
-  const prompt = `Bạn là chuyên gia phân tích thị trường chứng khoán Mỹ hàng đầu. Phân tích tình hình THỰC TẾ và dự báo ngày mai.
+  const prompt = `Bạn là chuyên gia phân tích thị trường chứng khoán Mỹ hàng đầu.
 
-GIÁ THỰC TẾ HIỆN TẠI (bao gồm after-hours nếu có):
-- S&P 500 (SPY): $${spyPrice.toFixed(2)} (${spyPct >= 0 ? "+" : ""}${spyPct.toFixed(2)}%)${params.spy?.afterHoursPrice ? " ← GIÁ AFTER-HOURS" : " ← GIÁ ĐÓNG CỬA"}
-- Nasdaq (QQQ): $${(params.qqq?.effectivePrice || 0).toFixed(2)} (${(params.qqq?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.qqq?.effectiveChangePct || 0).toFixed(2)}%)${params.qqq?.afterHoursPrice ? " ← AFTER-HOURS" : ""}
-- Dow Jones (DIA): $${(params.dia?.effectivePrice || 0).toFixed(2)} (${(params.dia?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.dia?.effectiveChangePct || 0).toFixed(2)}%)${params.dia?.afterHoursPrice ? " ← AFTER-HOURS" : ""}
+GIÁ HIỆN TẠI ${hasAfterHours ? "(AFTER-HOURS)" : "(ĐÓNG CỬA)"}:
+- S&P 500 (SPY): $${spyPrice.toFixed(2)} (${spyPct >= 0 ? "+" : ""}${spyPct.toFixed(2)}%)
+- Nasdaq (QQQ): $${(params.qqq?.effectivePrice || 0).toFixed(2)} (${(params.qqq?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.qqq?.effectiveChangePct || 0).toFixed(2)}%)
+- Dow Jones (DIA): $${(params.dia?.effectivePrice || 0).toFixed(2)} (${(params.dia?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.dia?.effectiveChangePct || 0).toFixed(2)}%)
 - Russell 2000 (IWM): $${(params.iwm?.effectivePrice || 0).toFixed(2)} (${(params.iwm?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.iwm?.effectiveChangePct || 0).toFixed(2)}%)
 - VIX: ${params.vix?.toFixed(2) || "N/A"}
 - Fear & Greed: ${params.fearGreed || "N/A"}/100
 
-TIN TỐT:
-${positiveNews || "Không có"}
+TIN TỐT: ${positiveNews || "Không có"}
+TIN XẤU: ${negativeNews || "Không có"}
 
-TIN XẤU:
-${negativeNews || "Không có"}
+QUAN TRỌNG: SPY đang ở $${spyPrice.toFixed(2)}. Hỗ trợ/kháng cự PHẢI dựa trên mức giá này, không được dùng mức giá khác.
 
-QUAN TRỌNG: Phân tích dựa trên giá THỰC TẾ hiện tại. Nếu SPY đang ở $${spyPrice.toFixed(2)}, hỗ trợ và kháng cự phải phù hợp với mức giá này.
-
-Thị trường đang ${marketDir}. Trả lời JSON thuần túy:
-{
-  "whyMoving": "Lý do thị trường ${marketDir} hôm nay — 2-3 câu tiếng Việt",
-  "tomorrowForecast": "TĂNG hoặc GIẢM hoặc SIDEWAYS",
-  "tomorrowReason": "Lý do dự báo ngày mai — 2-3 câu tiếng Việt",
-  "tomorrowConfidence": "Cao hoặc Trung bình hoặc Thấp",
-  "risks": "Rủi ro chính — 1-2 câu tiếng Việt",
-  "advice": "Lời khuyên cho trader — 1-2 câu tiếng Việt",
-  "sentiment": "bullish hoặc bearish hoặc neutral",
-  "keyLevels": "Hỗ trợ và kháng cự SPY thực tế dựa trên giá $${spyPrice.toFixed(2)}"
-}`;
+Trả lời JSON thuần túy:
+{"whyMoving":"Lý do thị trường ${marketDir} — 2-3 câu tiếng Việt","tomorrowForecast":"TĂNG hoặc GIẢM hoặc SIDEWAYS","tomorrowReason":"Lý do dự báo ngày mai — 2-3 câu tiếng Việt","tomorrowConfidence":"Cao hoặc Trung bình hoặc Thấp","risks":"Rủi ro chính — 1-2 câu tiếng Việt","advice":"Lời khuyên trader — 1-2 câu tiếng Việt","sentiment":"bullish hoặc bearish hoặc neutral","keyLevels":"Hỗ trợ và kháng cự SPY thực tế gần $${spyPrice.toFixed(2)}"}`;
 
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -180,10 +174,10 @@ Thị trường đang ${marketDir}. Trả lời JSON thuần túy:
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         messages: [
-          { role: "system", content: "Chuyên gia thị trường chứng khoán Mỹ. Chỉ trả lời JSON thuần túy, không markdown." },
+          { role: "system", content: "Chuyên gia thị trường chứng khoán Mỹ. Chỉ trả lời JSON thuần túy." },
           { role: "user", content: prompt }
         ],
-        temperature: 0.2, max_tokens: 600,
+        temperature: 0.2, max_tokens: 500,
       }),
     });
     if (!res.ok) return null;
@@ -195,10 +189,10 @@ Thị trường đang ${marketDir}. Trả lời JSON thuần túy:
 
 export async function GET() {
   const [spy, qqq, dia, iwm, vix, fearGreed, news] = await Promise.all([
-    getIndexPrice("SPY", "SPY"),
-    getIndexPrice("QQQ", "QQQ"),
-    getIndexPrice("DIA", "DIA"),
-    getIndexPrice("IWM", "IWM"),
+    getIndexPrice("SPY"),
+    getIndexPrice("QQQ"),
+    getIndexPrice("DIA"),
+    getIndexPrice("IWM"),
     getVIX(),
     getFearGreed(),
     getMarketNews(),
@@ -213,10 +207,7 @@ export async function GET() {
 
   return NextResponse.json({
     indices: { spy, qqq, dia, iwm },
-    vix,
-    fearGreed,
-    news,
-    aiAnalysis,
+    vix, fearGreed, news, aiAnalysis,
     updatedAt: new Date().toISOString(),
   });
 }

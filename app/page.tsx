@@ -270,17 +270,20 @@ export default function Home() {
                     ].map(({ label, key, icon }) => {
                       const d = marketOverview.indices?.[key];
                       if (!d) return null;
-                      const up = d.changePct >= 0;
+                      const effectivePrice = d.afterHoursPrice || d.price;
+                      const up = d.effectiveChangePct >= 0;
                       return (
                         <div key={key} className={`rounded-lg p-2.5 border ${up ? "bg-green-950 border-green-800" : "bg-red-950 border-red-800"}`}>
                           <div className="text-xs text-gray-400 mb-1">{icon} {label}</div>
-                          <div className="text-sm font-bold text-white">${d.price?.toFixed(2)}</div>
+                          <div className="text-sm font-bold text-white">${effectivePrice?.toFixed(2)}</div>
                           <div className={`text-xs font-medium mt-0.5 ${up ? "text-green-400" : "text-red-400"}`}>
-                            {up ? "+" : ""}{d.changePct?.toFixed(2)}%
+                            {up ? "+" : ""}{d.effectiveChangePct?.toFixed(2)}%
                           </div>
-                          <div className={`text-xs mt-0.5 ${up ? "text-green-300" : "text-red-300"}`}>
-                            {up ? "+" : ""}${d.change?.toFixed(2)}
-                          </div>
+                          {d.afterHoursPrice && (
+                            <div className="text-xs text-purple-400 mt-0.5">
+                              {d.afterHoursLabel || "After-hrs"}: ${d.afterHoursPrice?.toFixed(2)}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
