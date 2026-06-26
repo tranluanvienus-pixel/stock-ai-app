@@ -5,23 +5,57 @@ import { NextResponse } from "next/server";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
 
-// Yahoo v8 — lấy giá chỉ số (không bị block)
-async function getIndexPrice(symbol: string) {
+// Lấy giá index từ Yahoo v8 + after-hours từ Polygon
+async function getIndexPrice(yahooSymbol: string, polygonSymbol: string) {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
+    // Yahoo v8 — regular market data
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=5d`;
     const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-    if (!res.ok) return null;
     const json = await res.json();
     const result = json?.chart?.result?.[0];
     if (!result) return null;
+
     const closes = result.indicators.quote[0].close.filter((c: number) => c != null);
-    const current = result.meta.regularMarketPrice || closes[closes.length - 1];
+    const regularPrice = result.meta.regularMarketPrice || closes[closes.length - 1];
     const prev = closes[closes.length - 2] || closes[closes.length - 1];
-    const change = current - prev;
+    const change = regularPrice - prev;
     const changePct = prev ? (change / prev) * 100 : 0;
-    const high = result.meta.regularMarketDayHigh || current;
-    const low = result.meta.regularMarketDayLow || current;
-    return { price: current, change, changePct, high, low };
+
+    // Polygon — after-hours price
+    let afterHoursPrice: number | null = null;
+    let afterHoursPct: number | null = null;
+    if (POLYGON_KEY) {
+      try {
+        const pRes = await fetch(
+          `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${polygonSymbol}?apiKey=${POLYGON_KEY}`
+        );
+        if (pRes.ok) {
+          const pJson = await pRes.json();
+          const t = pJson?.ticker;
+          const fmv = t?.fmv;
+          if (fmv && Math.abs(fmv - regularPrice) > 0.05) {
+            afterHoursPrice = fmv;
+            afterHoursPct = ((fmv - regularPrice) / regularPrice) * 100;
+          }
+        }
+      } catch {}
+    }
+
+    // Giá hiệu dụng = after-hours nếu có, không thì dùng regular
+    const effectivePrice = afterHoursPrice || regularPrice;
+    const effectiveChangePct = afterHoursPrice
+      ? ((effectivePrice - prev) / prev) * 100
+      : changePct;
+
+    return {
+      price: regularPrice,
+      change,
+      changePct,
+      afterHoursPrice,
+      afterHoursPct,
+      effectivePrice,
+      effectiveChangePct,
+    };
   } catch { return null; }
 }
 
@@ -36,8 +70,8 @@ async function getMarketNews() {
     const json = await res.json();
     return (json?.results || []).slice(0, 10).map((n: any) => {
       const title = n.title || "";
-      const posWords = ["surge", "rally", "gain", "rise", "jump", "beat", "record", "high", "strong", "growth", "profit", "up", "bull"];
-      const negWords = ["drop", "fall", "decline", "loss", "miss", "crash", "low", "weak", "cut", "down", "bear", "risk", "warning", "tariff", "recession"];
+      const posWords = ["surge", "rally", "gain", "rise", "jump", "beat", "record", "high", "strong", "growth", "profit", "up", "bull", "green"];
+      const negWords = ["drop", "fall", "decline", "loss", "miss", "crash", "low", "weak", "cut", "down", "bear", "risk", "warning", "tariff", "recession", "selloff", "plunge"];
       const lower = title.toLowerCase();
       const pos = posWords.filter(w => lower.includes(w)).length;
       const neg = negWords.filter(w => lower.includes(w)).length;
@@ -90,12 +124,12 @@ async function getFearGreed() {
   return null;
 }
 
-// Groq AI — phân tích thị trường + dự báo ngày mai
+// Groq AI — phân tích + dự báo ngày mai dùng giá THỰC TẾ (after-hours)
 async function getMarketAnalysis(params: {
-  spy: { price: number; changePct: number } | null;
-  qqq: { price: number; changePct: number } | null;
-  dia: { price: number; changePct: number } | null;
-  iwm: { price: number; changePct: number } | null;
+  spy: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null } | null;
+  qqq: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null } | null;
+  dia: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null } | null;
+  iwm: { effectivePrice: number; effectiveChangePct: number } | null;
   vix: number | null;
   fearGreed: number | null;
   news: { title: string; sentiment: string }[];
@@ -104,39 +138,39 @@ async function getMarketAnalysis(params: {
 
   const positiveNews = params.news.filter(n => n.sentiment === "positive").slice(0, 3).map(n => `✅ ${n.title}`).join("\n");
   const negativeNews = params.news.filter(n => n.sentiment === "negative").slice(0, 3).map(n => `❌ ${n.title}`).join("\n");
-  const neutralNews = params.news.filter(n => n.sentiment === "neutral").slice(0, 2).map(n => `⚡ ${n.title}`).join("\n");
 
-  const marketDir = (params.spy?.changePct || 0) >= 0 ? "TĂNG" : "GIẢM";
+  const spyPrice = params.spy?.effectivePrice || 0;
+  const spyPct = params.spy?.effectiveChangePct || 0;
+  const marketDir = spyPct >= 0 ? "TĂNG" : "GIẢM";
 
-  const prompt = `Bạn là chuyên gia phân tích thị trường chứng khoán Mỹ hàng đầu. Phân tích tình hình hôm nay và dự báo ngày mai.
+  const prompt = `Bạn là chuyên gia phân tích thị trường chứng khoán Mỹ hàng đầu. Phân tích tình hình THỰC TẾ và dự báo ngày mai.
 
-DIỄN BIẾN HÔM NAY:
-- S&P 500 (SPY): ${params.spy ? `$${params.spy.price.toFixed(2)} (${params.spy.changePct >= 0 ? "+" : ""}${params.spy.changePct.toFixed(2)}%)` : "N/A"}
-- Nasdaq (QQQ): ${params.qqq ? `$${params.qqq.price.toFixed(2)} (${params.qqq.changePct >= 0 ? "+" : ""}${params.qqq.changePct.toFixed(2)}%)` : "N/A"}
-- Dow Jones (DIA): ${params.dia ? `$${params.dia.price.toFixed(2)} (${params.dia.changePct >= 0 ? "+" : ""}${params.dia.changePct.toFixed(2)}%)` : "N/A"}
-- Russell 2000 (IWM): ${params.iwm ? `$${params.iwm.price.toFixed(2)} (${params.iwm.changePct >= 0 ? "+" : ""}${params.iwm.changePct.toFixed(2)}%)` : "N/A"}
+GIÁ THỰC TẾ HIỆN TẠI (bao gồm after-hours nếu có):
+- S&P 500 (SPY): $${spyPrice.toFixed(2)} (${spyPct >= 0 ? "+" : ""}${spyPct.toFixed(2)}%)${params.spy?.afterHoursPrice ? " ← GIÁ AFTER-HOURS" : " ← GIÁ ĐÓNG CỬA"}
+- Nasdaq (QQQ): $${(params.qqq?.effectivePrice || 0).toFixed(2)} (${(params.qqq?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.qqq?.effectiveChangePct || 0).toFixed(2)}%)${params.qqq?.afterHoursPrice ? " ← AFTER-HOURS" : ""}
+- Dow Jones (DIA): $${(params.dia?.effectivePrice || 0).toFixed(2)} (${(params.dia?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.dia?.effectiveChangePct || 0).toFixed(2)}%)${params.dia?.afterHoursPrice ? " ← AFTER-HOURS" : ""}
+- Russell 2000 (IWM): $${(params.iwm?.effectivePrice || 0).toFixed(2)} (${(params.iwm?.effectiveChangePct || 0) >= 0 ? "+" : ""}${(params.iwm?.effectiveChangePct || 0).toFixed(2)}%)
 - VIX: ${params.vix?.toFixed(2) || "N/A"}
 - Fear & Greed: ${params.fearGreed || "N/A"}/100
 
-TIN TỐT HÔM NAY:
+TIN TỐT:
 ${positiveNews || "Không có"}
 
-TIN XẤU HÔM NAY:
+TIN XẤU:
 ${negativeNews || "Không có"}
 
-TIN TRUNG LẬP:
-${neutralNews || "Không có"}
+QUAN TRỌNG: Phân tích dựa trên giá THỰC TẾ hiện tại. Nếu SPY đang ở $${spyPrice.toFixed(2)}, hỗ trợ và kháng cự phải phù hợp với mức giá này.
 
-Thị trường hôm nay đang ${marketDir}. Hãy phân tích và trả lời JSON thuần túy:
+Thị trường đang ${marketDir}. Trả lời JSON thuần túy:
 {
   "whyMoving": "Lý do thị trường ${marketDir} hôm nay — 2-3 câu tiếng Việt",
-  "tomorrowForecast": "Dự báo ngày mai: TĂNG hoặc GIẢM hoặc SIDEWAYS",
-  "tomorrowReason": "Lý do dự báo ngày mai — 2-3 câu tiếng Việt, dựa trên tin tức và chỉ số",
+  "tomorrowForecast": "TĂNG hoặc GIẢM hoặc SIDEWAYS",
+  "tomorrowReason": "Lý do dự báo ngày mai — 2-3 câu tiếng Việt",
   "tomorrowConfidence": "Cao hoặc Trung bình hoặc Thấp",
-  "risks": "Rủi ro chính cần theo dõi — 1-2 câu tiếng Việt",
-  "advice": "Lời khuyên cụ thể cho trader hôm nay và ngày mai — 1-2 câu tiếng Việt",
+  "risks": "Rủi ro chính — 1-2 câu tiếng Việt",
+  "advice": "Lời khuyên cho trader — 1-2 câu tiếng Việt",
   "sentiment": "bullish hoặc bearish hoặc neutral",
-  "keyLevels": "Mức hỗ trợ/kháng cự quan trọng của SPY cần theo dõi"
+  "keyLevels": "Hỗ trợ và kháng cự SPY thực tế dựa trên giá $${spyPrice.toFixed(2)}"
 }`;
 
   try {
@@ -149,7 +183,7 @@ Thị trường hôm nay đang ${marketDir}. Hãy phân tích và trả lời JS
           { role: "system", content: "Chuyên gia thị trường chứng khoán Mỹ. Chỉ trả lời JSON thuần túy, không markdown." },
           { role: "user", content: prompt }
         ],
-        temperature: 0.3, max_tokens: 600,
+        temperature: 0.2, max_tokens: 600,
       }),
     });
     if (!res.ok) return null;
@@ -161,10 +195,10 @@ Thị trường hôm nay đang ${marketDir}. Hãy phân tích và trả lời JS
 
 export async function GET() {
   const [spy, qqq, dia, iwm, vix, fearGreed, news] = await Promise.all([
-    getIndexPrice("SPY"),
-    getIndexPrice("QQQ"),
-    getIndexPrice("DIA"),
-    getIndexPrice("IWM"),
+    getIndexPrice("SPY", "SPY"),
+    getIndexPrice("QQQ", "QQQ"),
+    getIndexPrice("DIA", "DIA"),
+    getIndexPrice("IWM", "IWM"),
     getVIX(),
     getFearGreed(),
     getMarketNews(),
