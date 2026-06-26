@@ -286,29 +286,49 @@ export default function Home() {
                     })}
                   </div>
 
-                  {/* AI giải thích lý do */}
+                  {/* AI phân tích + dự báo ngày mai */}
                   {marketOverview.aiAnalysis && (
                     <div className="bg-blue-950 rounded-xl p-3 border border-blue-800 mb-3">
-                      <div className="text-xs font-bold text-blue-400 mb-2">
-                        🤖 {t("AI PHÂN TÍCH THỊ TRƯỜNG HÔM NAY", "AI MARKET ANALYSIS TODAY")}
-                        <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${marketOverview.aiAnalysis.sentiment === "bullish" ? "bg-green-900 text-green-300" : marketOverview.aiAnalysis.sentiment === "bearish" ? "bg-red-900 text-red-300" : "bg-yellow-900 text-yellow-300"}`}>
-                          {marketOverview.aiAnalysis.sentiment === "bullish" ? t("Tích cực", "Bullish") :
-                           marketOverview.aiAnalysis.sentiment === "bearish" ? t("Tiêu cực", "Bearish") :
-                           t("Trung lập", "Neutral")}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-xs font-bold text-blue-400">
+                          🤖 {t("AI PHÂN TÍCH THỊ TRƯỜNG", "AI MARKET ANALYSIS")}
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${marketOverview.aiAnalysis.sentiment === "bullish" ? "bg-green-900 text-green-300" : marketOverview.aiAnalysis.sentiment === "bearish" ? "bg-red-900 text-red-300" : "bg-yellow-900 text-yellow-300"}`}>
+                          {marketOverview.aiAnalysis.sentiment === "bullish" ? t("Tích cực", "Bullish") : marketOverview.aiAnalysis.sentiment === "bearish" ? t("Tiêu cực", "Bearish") : t("Trung lập", "Neutral")}
                         </span>
                       </div>
                       <div className="space-y-2">
                         <div className="bg-blue-900/30 rounded-lg p-2">
-                          <div className="text-xs text-blue-300 font-medium mb-1">📰 {t("Tại sao thị trường", "Why market is moving")}</div>
+                          <div className="text-xs text-blue-300 font-medium mb-1">📊 {t("Tại sao thị trường hôm nay", "Why market moved today")}</div>
                           <div className="text-xs text-gray-200 leading-relaxed">{marketOverview.aiAnalysis.whyMoving}</div>
                         </div>
+
+                        {/* Dự báo ngày mai */}
+                        {marketOverview.aiAnalysis.tomorrowForecast && (
+                          <div className={`rounded-lg p-3 border-2 ${marketOverview.aiAnalysis.tomorrowForecast === "TĂNG" ? "bg-green-950 border-green-700" : marketOverview.aiAnalysis.tomorrowForecast === "GIẢM" ? "bg-red-950 border-red-700" : "bg-yellow-950 border-yellow-700"}`}>
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="text-xs font-bold text-white">🔮 {t("DỰ BÁO NGÀY MAI", "TOMORROW FORECAST")}</div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-sm font-bold ${marketOverview.aiAnalysis.tomorrowForecast === "TĂNG" ? "text-green-400" : marketOverview.aiAnalysis.tomorrowForecast === "GIẢM" ? "text-red-400" : "text-yellow-400"}`}>
+                                  {marketOverview.aiAnalysis.tomorrowForecast === "TĂNG" ? "📈 TĂNG" : marketOverview.aiAnalysis.tomorrowForecast === "GIẢM" ? "📉 GIẢM" : "➡️ SIDEWAYS"}
+                                </span>
+                                <span className="text-xs text-gray-400">{t("Độ tin:", "Conf:")} {marketOverview.aiAnalysis.tomorrowConfidence}</span>
+                              </div>
+                            </div>
+                            <div className="text-xs text-gray-200 leading-relaxed">{marketOverview.aiAnalysis.tomorrowReason}</div>
+                            {marketOverview.aiAnalysis.keyLevels && (
+                              <div className="text-xs text-gray-400 mt-1">📍 {marketOverview.aiAnalysis.keyLevels}</div>
+                            )}
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-2">
                           <div className="bg-red-900/20 rounded-lg p-2">
                             <div className="text-xs text-red-400 font-medium mb-1">⚠️ {t("Rủi ro cần theo dõi", "Risks to watch")}</div>
                             <div className="text-xs text-gray-300 leading-relaxed">{marketOverview.aiAnalysis.risks}</div>
                           </div>
                           <div className="bg-green-900/20 rounded-lg p-2">
-                            <div className="text-xs text-green-400 font-medium mb-1">💡 {t("Lời khuyên hôm nay", "Today advice")}</div>
+                            <div className="text-xs text-green-400 font-medium mb-1">💡 {t("Lời khuyên", "Advice")}</div>
                             <div className="text-xs text-gray-300 leading-relaxed">{marketOverview.aiAnalysis.advice}</div>
                           </div>
                         </div>
@@ -316,16 +336,32 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Tin tức vĩ mô */}
+                  {/* Tin tức vĩ mô với nhãn tốt/xấu */}
                   {marketOverview.news && marketOverview.news.length > 0 && (
                     <div>
-                      <div className="text-xs font-medium text-gray-400 mb-2">📰 {t("TIN TỨC VĨ MÔ MỚI NHẤT", "LATEST MACRO NEWS")}</div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">📰 {t("TIN TỨC VĨ MÔ — TỐT/XẤU CHO THỊ TRƯỜNG", "MACRO NEWS — GOOD/BAD FOR MARKET")}</div>
                       <div className="space-y-1.5">
-                        {marketOverview.news.slice(0, 5).map((n: any, i: number) => (
+                        {marketOverview.news.slice(0, 8).map((n: any, i: number) => (
                           <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
-                            className="block bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors">
-                            <div className="text-xs text-gray-200 leading-relaxed">{n.title}</div>
-                            <div className="text-xs text-gray-500 mt-0.5">{n.source} · {n.publishedAt}</div>
+                            className={`block rounded-lg px-3 py-2 border-l-2 hover:opacity-80 transition-opacity ${n.sentiment === "positive" ? "bg-green-950 border-green-500" : n.sentiment === "negative" ? "bg-red-950 border-red-500" : "bg-gray-800 border-gray-600"}`}>
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs flex-shrink-0 mt-0.5">
+                                {n.sentiment === "positive" ? "✅" : n.sentiment === "negative" ? "❌" : "⚡"}
+                              </span>
+                              <div className="flex-1">
+                                <div className="text-xs text-gray-100 leading-relaxed">{n.title}</div>
+                                <div className="flex items-center justify-between mt-1">
+                                  <div className="text-xs text-gray-500">{n.source} · {n.publishedAt}</div>
+                                  {n.tickers && n.tickers.length > 0 && (
+                                    <div className="flex gap-1">
+                                      {n.tickers.map((tk: string) => (
+                                        <span key={tk} className="text-xs bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">{tk}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </a>
                         ))}
                       </div>
