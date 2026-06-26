@@ -392,7 +392,14 @@ export default function Home() {
                     {result.sector && result.sector !== "N/A" && (
                       <div className="text-xs text-gray-600">{result.sector} · {result.industry}</div>
                     )}
-                    <div className="text-2xl font-medium text-green-400 mt-1">${result.price}</div>
+                    <div className="flex items-baseline gap-2 mt-1">
+                      <div className="text-2xl font-medium text-green-400">${result.price}</div>
+                      {result.priceChange && (
+                        <div className={`text-sm font-medium ${parseFloat(result.priceChange) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          {parseFloat(result.priceChange) >= 0 ? "+" : ""}{result.priceChange} ({parseFloat(result.priceChangePct) >= 0 ? "+" : ""}{result.priceChangePct}%)
+                        </div>
+                      )}
+                    </div>
                     {result.afterHoursPrice && (
                       <div className="text-xs text-gray-500 mt-0.5">
                         <span className="bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded text-xs mr-1">
@@ -644,10 +651,40 @@ export default function Home() {
                 <div className="space-y-1 max-h-36 overflow-y-auto">
                   {result.signals.map((signal: string, i: number) => {
                     const isBull = signal.includes("bullish") || signal.includes("above") || signal.includes("golden") || signal.includes("oversold") || signal.includes("strong") || signal.includes("high volume");
+                    const signalVi: Record<string, string> = {
+                      "RSI oversold - bullish": "RSI quá bán — tăng",
+                      "RSI approaching oversold": "RSI gần vùng quá bán",
+                      "RSI overbought - bearish": "RSI quá mua — giảm",
+                      "RSI healthy bullish range": "RSI vùng tăng khỏe mạnh",
+                      "Stoch RSI oversold - strong buy": "Stoch RSI quá bán — mua mạnh",
+                      "Stoch RSI bullish zone": "Stoch RSI vùng tăng",
+                      "Stoch RSI overbought": "Stoch RSI quá mua",
+                      "Price above MA20 - bullish": "Giá trên MA20 — tăng",
+                      "Price below MA20 - bearish": "Giá dưới MA20 — giảm",
+                      "Price above MA50 - bullish": "Giá trên MA50 — tăng",
+                      "Price below MA50 - bearish": "Giá dưới MA50 — giảm",
+                      "Price above MA200 - strong uptrend": "Giá trên MA200 — xu hướng tăng mạnh",
+                      "Price below MA200 - downtrend": "Giá dưới MA200 — xu hướng giảm",
+                      "EMA9 above EMA21 - bullish": "EMA9 cắt lên EMA21 — tăng",
+                      "EMA9 below EMA21 - bearish": "EMA9 dưới EMA21 — giảm",
+                      "MA20 > MA50 - golden cross zone": "MA20 > MA50 — vùng golden cross",
+                      "MA20 < MA50 - death cross zone": "MA20 < MA50 — vùng death cross",
+                      "MACD bullish crossover": "MACD cắt lên — tăng",
+                      "MACD bearish crossover": "MACD cắt xuống — giảm",
+                      "Price below BB lower - oversold bounce": "Giá dưới BB dưới — khả năng bật",
+                      "Price above BB upper - overbought": "Giá trên BB trên — quá mua",
+                      "Price below BB middle - recovery zone": "Giá dưới BB giữa — vùng hồi phục",
+                      "ADX strong uptrend": "ADX xu hướng tăng mạnh",
+                      "ADX strong downtrend": "ADX xu hướng giảm mạnh",
+                      "OBV bullish": "OBV tăng — dòng tiền vào",
+                      "OBV bearish": "OBV giảm — dòng tiền ra",
+                      "High volume": "Volume cao — xác nhận mạnh",
+                    };
+                    const label = lang === "vi" ? (signalVi[signal] || signal) : signal;
                     return (
                       <div key={i} className={`flex items-start gap-1.5 p-1.5 rounded text-xs ${isBull ? "bg-green-950 text-green-300" : "bg-red-950 text-red-300"}`}>
                         <span className="flex-shrink-0">{isBull ? "✓" : "✗"}</span>
-                        <span>{signal}</span>
+                        <span>{label}</span>
                       </div>
                     );
                   })}
@@ -669,6 +706,10 @@ export default function Home() {
                         ["P/E", result.peRatio || "N/A"],
                         [t("Giá mục tiêu", "Target Price"), result.targetPrice ? "$" + result.targetPrice : "N/A"],
                         [t("Cổ tức", "Dividend"), result.dividendYield ? result.dividendYield + "%" : "0%"],
+                        ["ROE", result.returnOnEquity ? result.returnOnEquity + "%" : "N/A"],
+                        [t("Biên LN", "Profit Margin"), result.profitMargin ? parseFloat(result.profitMargin).toFixed(1) + "%" : "N/A"],
+                        ["Beta", result.beta || "N/A"],
+                        ["D/E", result.debtToEquity || "N/A"],
                       ].map(([k, v], i) => (
                         <div key={i} className="bg-gray-800 rounded p-2">
                           <div className="text-xs text-gray-500">{k}</div>
@@ -676,6 +717,16 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
+                    {result.analystRating && (result.analystRating.buy > 0 || result.analystRating.hold > 0) && (
+                      <div className="bg-gray-800 rounded p-2 mb-2">
+                        <div className="text-xs text-gray-500 mb-1">{t("Đánh giá analyst", "Analyst Ratings")}</div>
+                        <div className="flex gap-2">
+                          <span className="text-xs text-green-400">✓ {t("Mua", "Buy")}: {result.analystRating.buy}</span>
+                          <span className="text-xs text-yellow-400">— {t("Giữ", "Hold")}: {result.analystRating.hold}</span>
+                          <span className="text-xs text-red-400">✗ {t("Bán", "Sell")}: {result.analystRating.sell}</span>
+                        </div>
+                      </div>
+                    )}
                     {result.description && (
                       <div className="bg-gray-800 rounded p-2">
                         <div className="text-xs text-gray-500 mb-1">{t("Về công ty", "About")}</div>
