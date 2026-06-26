@@ -23,9 +23,6 @@ export default function Home() {
   const [marketOverview, setMarketOverview] = useState<any>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
-  const [marketOverview, setMarketOverview] = useState<any>(null);
-  const [overviewLoading, setOverviewLoading] = useState(false);
-  const [showOverview, setShowOverview] = useState(false);
 
   const t = (vi: string, en: string) => lang === "vi" ? vi : en;
 
@@ -55,16 +52,6 @@ export default function Home() {
       setMarketData(data);
     } catch {}
   }, []);
-
-  const loadMarketOverview = async () => {
-    setOverviewLoading(true);
-    try {
-      const res = await fetch("/api/market");
-      const data = await res.json();
-      setMarketOverview(data);
-    } catch {}
-    setOverviewLoading(false);
-  };
 
   const loadMarketOverview = async () => {
     setOverviewLoading(true);
