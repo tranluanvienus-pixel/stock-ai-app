@@ -20,10 +20,12 @@ export default function Home() {
   const [sectorsLoading, setSectorsLoading] = useState(false);
   // Market
   const [marketData, setMarketData] = useState<any>(null);
+  const [marketOverview, setMarketOverview] = useState<any>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [showOverview, setShowOverview] = useState(false);
 
   const t = (vi: string, en: string) => lang === "vi" ? vi : en;
 
-  // Load watchlist data
   const loadWatchlist = useCallback(async (syms: string[]) => {
     if (!syms.length) return;
     try {
@@ -33,7 +35,6 @@ export default function Home() {
     } catch {}
   }, []);
 
-  // Load sector rotation
   const loadSectors = async () => {
     setSectorsLoading(true);
     try {
@@ -44,7 +45,6 @@ export default function Home() {
     setSectorsLoading(false);
   };
 
-  // Load market data (VIX, Fear&Greed)
   const loadMarket = useCallback(async () => {
     try {
       const res = await fetch("/api/analyze?action=market");
@@ -53,9 +53,20 @@ export default function Home() {
     } catch {}
   }, []);
 
+  const loadMarketOverview = async () => {
+    setOverviewLoading(true);
+    try {
+      const res = await fetch("/api/market");
+      const data = await res.json();
+      setMarketOverview(data);
+    } catch {}
+    setOverviewLoading(false);
+  };
+
   useEffect(() => { loadWatchlist(watchlist); loadMarket(); }, []);
   useEffect(() => { if (showWatchlist) loadWatchlist(watchlist); }, [showWatchlist, watchlist]);
   useEffect(() => { if (showSectors && !sectors.length) loadSectors(); }, [showSectors]);
+  useEffect(() => { if (showOverview && !marketOverview) loadMarketOverview(); }, [showOverview]);
 
   const analyze = async (sym?: string) => {
     const s = (sym || symbol).toUpperCase();
@@ -230,6 +241,109 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* Market Overview */}
+        <div className="bg-gray-900 rounded-xl border border-gray-800 mb-4 overflow-hidden">
+          <button onClick={() => setShowOverview(!showOverview)}
+            className="w-full flex justify-between items-center p-3 text-xs font-medium text-gray-400 hover:text-white">
+            <span>🌍 {t("THỊ TRƯỜNG MỸ REAL-TIME — TẠI SAO TĂNG/GIẢM", "US MARKET REAL-TIME — WHY UP/DOWN")}</span>
+            <div className="flex items-center gap-2">
+              {marketOverview && (
+                <span className="text-xs text-gray-600">{new Date(marketOverview.updatedAt).toLocaleTimeString("vi-VN")}</span>
+              )}
+              <span>{showOverview ? "▲" : "▼"}</span>
+            </div>
+          </button>
+          {showOverview && (
+            <div className="p-3 pt-0 border-t border-gray-800">
+              {overviewLoading ? (
+                <div className="text-xs text-gray-500 text-center py-4">🔄 {t("Đang tải dữ liệu thị trường...", "Loading market data...")}</div>
+              ) : marketOverview ? (
+                <>
+                  {/* Chỉ số chính */}
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    {[
+                      { label: "S&P 500", key: "spy", icon: "📈" },
+                      { label: "Nasdaq", key: "qqq", icon: "💻" },
+                      { label: "Dow Jones", key: "dia", icon: "🏭" },
+                      { label: "Russell 2000", key: "iwm", icon: "📊" },
+                    ].map(({ label, key, icon }) => {
+                      const d = marketOverview.indices?.[key];
+                      if (!d) return null;
+                      const up = d.changePct >= 0;
+                      return (
+                        <div key={key} className={`rounded-lg p-2.5 border ${up ? "bg-green-950 border-green-800" : "bg-red-950 border-red-800"}`}>
+                          <div className="text-xs text-gray-400 mb-1">{icon} {label}</div>
+                          <div className="text-sm font-bold text-white">${d.price?.toFixed(2)}</div>
+                          <div className={`text-xs font-medium mt-0.5 ${up ? "text-green-400" : "text-red-400"}`}>
+                            {up ? "+" : ""}{d.changePct?.toFixed(2)}%
+                          </div>
+                          <div className={`text-xs mt-0.5 ${up ? "text-green-300" : "text-red-300"}`}>
+                            {up ? "+" : ""}${d.change?.toFixed(2)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* AI giải thích lý do */}
+                  {marketOverview.aiAnalysis && (
+                    <div className="bg-blue-950 rounded-xl p-3 border border-blue-800 mb-3">
+                      <div className="text-xs font-bold text-blue-400 mb-2">
+                        🤖 {t("AI PHÂN TÍCH THỊ TRƯỜNG HÔM NAY", "AI MARKET ANALYSIS TODAY")}
+                        <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${marketOverview.aiAnalysis.sentiment === "bullish" ? "bg-green-900 text-green-300" : marketOverview.aiAnalysis.sentiment === "bearish" ? "bg-red-900 text-red-300" : "bg-yellow-900 text-yellow-300"}`}>
+                          {marketOverview.aiAnalysis.sentiment === "bullish" ? t("Tích cực", "Bullish") :
+                           marketOverview.aiAnalysis.sentiment === "bearish" ? t("Tiêu cực", "Bearish") :
+                           t("Trung lập", "Neutral")}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="bg-blue-900/30 rounded-lg p-2">
+                          <div className="text-xs text-blue-300 font-medium mb-1">📰 {t("Tại sao thị trường", "Why market is moving")}</div>
+                          <div className="text-xs text-gray-200 leading-relaxed">{marketOverview.aiAnalysis.whyMoving}</div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-red-900/20 rounded-lg p-2">
+                            <div className="text-xs text-red-400 font-medium mb-1">⚠️ {t("Rủi ro cần theo dõi", "Risks to watch")}</div>
+                            <div className="text-xs text-gray-300 leading-relaxed">{marketOverview.aiAnalysis.risks}</div>
+                          </div>
+                          <div className="bg-green-900/20 rounded-lg p-2">
+                            <div className="text-xs text-green-400 font-medium mb-1">💡 {t("Lời khuyên hôm nay", "Today advice")}</div>
+                            <div className="text-xs text-gray-300 leading-relaxed">{marketOverview.aiAnalysis.advice}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tin tức vĩ mô */}
+                  {marketOverview.news && marketOverview.news.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">📰 {t("TIN TỨC VĨ MÔ MỚI NHẤT", "LATEST MACRO NEWS")}</div>
+                      <div className="space-y-1.5">
+                        {marketOverview.news.slice(0, 5).map((n: any, i: number) => (
+                          <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
+                            className="block bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors">
+                            <div className="text-xs text-gray-200 leading-relaxed">{n.title}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">{n.source} · {n.publishedAt}</div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button onClick={loadMarketOverview} className="mt-3 w-full bg-gray-800 hover:bg-gray-700 rounded-lg py-1.5 text-xs text-gray-400">
+                    🔄 {t("Cập nhật", "Refresh")}
+                  </button>
+                </>
+              ) : (
+                <button onClick={loadMarketOverview} className="w-full bg-blue-900 hover:bg-blue-800 rounded-lg py-2.5 text-xs text-blue-300 font-medium">
+                  🌍 {t("Tải dữ liệu thị trường", "Load market data")}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Watchlist */}
         <div className="bg-gray-900 rounded-xl border border-gray-800 mb-4 overflow-hidden">
