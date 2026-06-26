@@ -9,13 +9,30 @@ const WATCHLIST = [
   "HOOD","RIVN","INTC","MU","QCOM","AMAT","ON","IONQ","RGTI"
 ];
 
+const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
+
+// Polygon real-time price — đồng bộ với analyze
+async function getPolygonPrice(symbol: string): Promise<number | null> {
+  if (!POLYGON_KEY) return null;
+  try {
+    const res = await fetch(
+      `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${POLYGON_KEY}`
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const t = json?.ticker;
+    if (!t) return null;
+    return t.lastTrade?.p || t.day?.c || null;
+  } catch { return null; }
+}
+
 async function getStockData(symbol: string) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`;
   const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   return res.json();
 }
 
-// ─── INDICATORS (đồng bộ với analyze/route.ts) ───────────────────────────────
+// ─── INDICATORS (đồng bộ hoàn toàn với analyze/route.ts) ────────────────────
 
 function calcRSI(prices: number[], period = 14) {
   if (prices.length < period + 1) return 50;
@@ -59,7 +76,7 @@ function calcMA(prices: number[], period: number) {
 function calcMACD(prices: number[]) {
   const ema12 = calcEMA(prices, 12), ema26 = calcEMA(prices, 26);
   const macdLine = ema12 - ema26;
-  const signal = macdLine * 0.9; // đồng bộ với analyze
+  const signal = macdLine * 0.9;
   return { macdLine, signal };
 }
 
@@ -119,11 +136,15 @@ function calcSupRes(closes: number[]) {
   };
 }
 
-// ─── ANALYZE SINGLE STOCK (ĐỒNG BỘ VỚI analyze/route.ts) ────────────────────
+// ─── ANALYZE SINGLE STOCK ────────────────────────────────────────────────────
 
 async function analyzeStock(symbol: string) {
   try {
-    const data = await getStockData(symbol);
+    const [data, polygonPrice] = await Promise.all([
+      getStockData(symbol),
+      getPolygonPrice(symbol),
+    ]);
+
     const result = data?.chart?.result?.[0];
     if (!result) return null;
 
@@ -132,7 +153,9 @@ async function analyzeStock(symbol: string) {
     const highs: number[] = quote.high.filter((p: number) => p != null);
     const lows: number[] = quote.low.filter((p: number) => p != null);
     const volumes: number[] = quote.volume.filter((v: number) => v != null);
-    const currentPrice: number = result.meta.regularMarketPrice;
+
+    // Dùng Polygon price nếu có, fallback Yahoo — đồng bộ với analyze
+    const currentPrice: number = polygonPrice || result.meta.regularMarketPrice;
 
     if (closes.length < 50 || !currentPrice) return null;
 
@@ -154,69 +177,51 @@ async function analyzeStock(symbol: string) {
     const volRatio = volumes[volumes.length - 1] / avgVol;
     const perf5d = ((closes[closes.length-1] - closes[closes.length-6]) / closes[closes.length-6]) * 100;
 
-    // ── SCORING ĐỒNG BỘ VỚI analyze/route.ts ──
+    // ── SCORING ĐỒNG BỘ HOÀN TOÀN VỚI analyze/route.ts ──
     let score = 50;
 
-    // RSI
     if (rsi < 30) score += 15;
     else if (rsi < 45) score += 8;
     else if (rsi > 70) score -= 15;
     else if (rsi > 55 && rsi < 65) score += 5;
 
-    // Stoch RSI
     if (stochRSI < 20) score += 10;
     else if (stochRSI < 40) score += 5;
     else if (stochRSI > 80) score -= 10;
 
-    // MA
     if (currentPrice > ma20) score += 7; else score -= 7;
     if (currentPrice > ma50) score += 7; else score -= 7;
     if (ma200 && currentPrice > ma200) score += 8; else if (ma200) score -= 8;
 
-    // EMA
     if (ema9 > ema21) score += 6; else score -= 4;
-
-    // Golden/Death cross
     if (ma20 > ma50) score += 6; else score -= 6;
-
-    // MACD — đồng bộ: dùng macdLine > signal
     if (macd.macdLine > macd.signal) score += 7; else score -= 7;
 
-    // Bollinger
     if (currentPrice < bb.lower) score += 10;
     else if (currentPrice > bb.upper) score -= 10;
     else if (currentPrice < bb.middle) score += 3;
 
-    // ADX
     if (adx.adx > 25 && adx.diPlus > adx.diMinus) score += 8;
     else if (adx.adx > 25 && adx.diMinus > adx.diPlus) score -= 8;
 
-    // OBV
     if (obvTrend === "bullish") score += 6; else score -= 4;
 
-    // Volume
     if (volRatio > 1.5) score += 5;
     else if (volRatio < 0.5) score -= 3;
 
-    // IV Rank
     if (ivRank > 50) score += 3;
-    else if (ivRank < 25) score -= 0; // không phạt trong scanner
+    else if (ivRank < 25) score -= 0;
 
-    // Support/Resistance — đồng bộ
     if (currentPrice > supRes.support) score += 4; else score -= 4;
 
-    // Performance
     if (perf5d > 3) score += 3;
     else if (perf5d < -5) score -= 5;
 
     score = Math.max(0, Math.min(100, score));
 
-    // Chỉ trả về mã có score >= 75
     if (score < 75) return null;
 
     const sellPutSafe = score >= 68 && rsi < 65 && stochRSI < 70 && currentPrice > ma50 && ivRank > 25;
-
-    // Stop loss dùng ATR — đồng bộ với analyze
     const stopLoss = (currentPrice - 1.5 * atr).toFixed(2);
 
     return {
