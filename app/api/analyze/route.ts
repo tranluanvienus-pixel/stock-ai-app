@@ -471,36 +471,36 @@ export async function POST(req: Request) {
 
   // Giá từ Polygon.io, fallback Yahoo v8
   const aq = alphaQuote.status === "fulfilled" ? alphaQuote.value : null;
-  const currentPrice: number = aq?.price || result.meta.regularMarketPrice;
-  const priceChange = aq?.change || 0;
-  const priceChangePct = aq?.changePct || 0;
+  const currentPrice: number = (aq?.price as number) || result.meta.regularMarketPrice;
+  const priceChange: number = (aq?.change as number) || 0;
+  const priceChangePct: number = (aq?.changePct as number) || 0;
 
   // After-hours từ Polygon
-  const afterHoursPrice: number | undefined = aq?.afterHoursPrice;
-  const afterHoursPct: number | undefined = aq?.afterHoursPct;
-  const afterHoursLabel: string = aq?.afterHoursLabel || "";
+  const afterHoursPrice: number | null = (aq?.afterHoursPrice as number) || null;
+  const afterHoursPct: number | null = (aq?.afterHoursPct as number) || null;
+  const afterHoursLabel: string = (aq?.afterHoursLabel as string) || "";
 
   if (closes.length < 50) return NextResponse.json({ error: "Not enough data" });
 
-  // Thông tin công ty từ Alpha Vantage
+  // Thông tin công ty từ Polygon
   const co = alphaCompany.status === "fulfilled" ? alphaCompany.value : null;
-  const companyName = co?.name || result.meta.longName || result.meta.shortName || symbol;
-  const sector = co?.sector || "N/A";
-  const industry = co?.industry || "N/A";
-  const description = co?.description || "";
-  const peRatio = co?.peRatio || null;
-  const forwardPE = co?.forwardPE || null;
-  const marketCap = co?.marketCap || null;
-  const revenueGrowth = co?.revenueGrowthYOY || null;
-  const profitMargin = co?.profitMargin || null;
-  const targetPrice = co?.targetPrice || null;
-  const dividendYield = co?.dividendYield || null;
-  const beta = co?.beta || null;
-  const week52High = co?.week52High || null;
-  const week52Low = co?.week52Low || null;
-  const returnOnEquity = co?.returnOnEquity || null;
-  const debtToEquity = co?.debtToEquity || null;
-  const analystRating = co?.analystRating || null;
+  const companyName: string = co?.name || result.meta.longName || result.meta.shortName || symbol;
+  const sector: string = co?.sector || "N/A";
+  const industry: string = co?.industry || "N/A";
+  const description: string = co?.description || "";
+  const peRatio: number | null = null;
+  const forwardPE: number | null = null;
+  const marketCap: number | null = co?.marketCap || null;
+  const revenueGrowth: number | null = null;
+  const profitMargin: number | null = null;
+  const targetPrice: number | null = null;
+  const dividendYield: number | null = null;
+  const beta: number | null = null;
+  const week52High: number | null = null;
+  const week52Low: number | null = null;
+  const returnOnEquity: number | null = null;
+  const debtToEquity: number | null = null;
+  const analystRating: null = null;
 
   // Tin tức từ Alpha Vantage
   const news: any[] = alphaNews.status === "fulfilled" ? alphaNews.value : [];
@@ -670,16 +670,19 @@ export async function POST(req: Request) {
     price: currentPrice.toFixed(2),
     priceChange: priceChange.toFixed(2),
     priceChangePct: priceChangePct.toFixed(2),
-    peRatio: peRatio?.toFixed(2) || null,
-    forwardPE: forwardPE?.toFixed(2) || null,
+    afterHoursPrice: afterHoursPrice ? afterHoursPrice.toFixed(2) : null,
+    afterHoursPct: afterHoursPct ? afterHoursPct.toFixed(2) : null,
+    afterHoursLabel: afterHoursLabel || null,
+    peRatio: peRatio != null ? (peRatio as number).toFixed(2) : null,
+    forwardPE: forwardPE != null ? (forwardPE as number).toFixed(2) : null,
     marketCap,
-    targetPrice: targetPrice?.toFixed(2) || null,
-    dividendYield: dividendYield?.toFixed(2) || null,
-    beta: beta?.toFixed(2) || null,
-    week52High: week52High?.toFixed(2) || null,
-    week52Low: week52Low?.toFixed(2) || null,
-    returnOnEquity: returnOnEquity?.toFixed(1) || null,
-    debtToEquity: debtToEquity?.toFixed(2) || null,
+    targetPrice: targetPrice != null ? (targetPrice as number).toFixed(2) : null,
+    dividendYield: dividendYield != null ? (dividendYield as number).toFixed(2) : null,
+    beta: beta != null ? (beta as number).toFixed(2) : null,
+    week52High: week52High != null ? (week52High as number).toFixed(2) : null,
+    week52Low: week52Low != null ? (week52Low as number).toFixed(2) : null,
+    returnOnEquity: returnOnEquity != null ? (returnOnEquity as number).toFixed(1) : null,
+    debtToEquity: debtToEquity != null ? (debtToEquity as number).toFixed(2) : null,
     analystRating,
     score, aiScore,
     verdict: finalVerdict, verdictVi: finalVerdictVi,
