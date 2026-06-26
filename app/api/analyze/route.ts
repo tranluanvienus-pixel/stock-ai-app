@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
+const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
 
 // ─── DATA FETCHERS ────────────────────────────────────────────────────────────
 
@@ -14,87 +15,114 @@ async function getStockData(symbol: string) {
   return res.json();
 }
 
-// Alpha Vantage — giá real-time + after-hours (không bị block trên Vercel)
+// Polygon.io — giá real-time + after-hours (không bị block, không giới hạn ngày)
 async function getAlphaQuote(symbol: string) {
-  if (!ALPHA_VANTAGE_KEY) return null;
+  if (!POLYGON_KEY) return null;
   try {
+    // Lấy snapshot real-time
     const res = await fetch(
-      `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`
+      `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${POLYGON_KEY}`
     );
     if (!res.ok) return null;
     const json = await res.json();
-    const q = json?.["Global Quote"];
-    if (!q || !q["05. price"]) return null;
+    const t = json?.ticker;
+    if (!t) return null;
+
+    const day = t.day || {};
+    const prevDay = t.prevDay || {};
+    const lastQuote = t.lastQuote || {};
+    const lastTrade = t.lastTrade || {};
+
+    const price = lastTrade.p || day.c || 0;
+    const prevClose = prevDay.c || 0;
+    const change = prevClose ? price - prevClose : 0;
+    const changePct = prevClose ? (change / prevClose) * 100 : 0;
+
+    // After-hours / pre-market từ extended hours
+    let afterHoursPrice: number | undefined;
+    let afterHoursPct: number | undefined;
+    let afterHoursLabel = "";
+
+    // Polygon trả về extended hours trong lastQuote hoặc fmv
+    const fmv = t.fmv; // fair market value (after-hours)
+    if (fmv && Math.abs(fmv - price) > 0.01) {
+      afterHoursPrice = fmv;
+      afterHoursPct = ((fmv - price) / price) * 100;
+      afterHoursLabel = "After-hours";
+    }
+
     return {
-      price: parseFloat(q["05. price"]),
-      change: parseFloat(q["09. change"]),
-      changePct: parseFloat(q["10. change percent"]?.replace("%", "")),
-      high: parseFloat(q["03. high"]),
-      low: parseFloat(q["04. low"]),
-      volume: parseInt(q["06. volume"]),
-      prevClose: parseFloat(q["08. previous close"]),
+      price,
+      change,
+      changePct,
+      high: day.h || 0,
+      low: day.l || 0,
+      volume: day.v || 0,
+      prevClose,
+      afterHoursPrice,
+      afterHoursPct,
+      afterHoursLabel,
     };
   } catch { return null; }
 }
 
-// Alpha Vantage — company overview (thông tin công ty thật)
+// Polygon.io — company details (thông tin công ty thật)
 async function getAlphaCompany(symbol: string) {
-  if (!ALPHA_VANTAGE_KEY) return null;
+  if (!POLYGON_KEY) return null;
   try {
     const res = await fetch(
-      `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`
+      `https://api.polygon.io/v3/reference/tickers/${symbol}?apiKey=${POLYGON_KEY}`
     );
     if (!res.ok) return null;
-    const d = await res.json();
-    if (!d?.Symbol) return null;
+    const json = await res.json();
+    const d = json?.results;
+    if (!d) return null;
     return {
-      name: d.Name || symbol,
-      sector: d.Sector || "N/A",
-      industry: d.Industry || "N/A",
-      description: (d.Description || "").slice(0, 600),
-      marketCap: d.MarketCapitalization ? parseInt(d.MarketCapitalization) : null,
-      peRatio: d.PERatio && d.PERatio !== "None" ? parseFloat(d.PERatio) : null,
-      forwardPE: d.ForwardPE && d.ForwardPE !== "None" ? parseFloat(d.ForwardPE) : null,
-      pbRatio: d.PriceToBookRatio && d.PriceToBookRatio !== "None" ? parseFloat(d.PriceToBookRatio) : null,
-      eps: d.EPS && d.EPS !== "None" ? parseFloat(d.EPS) : null,
-      beta: d.Beta && d.Beta !== "None" ? parseFloat(d.Beta) : null,
-      dividendYield: d.DividendYield && d.DividendYield !== "None" ? parseFloat(d.DividendYield) * 100 : null,
-      week52High: d["52WeekHigh"] && d["52WeekHigh"] !== "None" ? parseFloat(d["52WeekHigh"]) : null,
-      week52Low: d["52WeekLow"] && d["52WeekLow"] !== "None" ? parseFloat(d["52WeekLow"]) : null,
-      targetPrice: d.AnalystTargetPrice && d.AnalystTargetPrice !== "None" ? parseFloat(d.AnalystTargetPrice) : null,
-      revenueGrowthYOY: d.QuarterlyRevenueGrowthYOY && d.QuarterlyRevenueGrowthYOY !== "None" ? parseFloat(d.QuarterlyRevenueGrowthYOY) * 100 : null,
-      profitMargin: d.ProfitMargin && d.ProfitMargin !== "None" ? parseFloat(d.ProfitMargin) * 100 : null,
-      revenuePerShare: d.RevenuePerShareTTM && d.RevenuePerShareTTM !== "None" ? parseFloat(d.RevenuePerShareTTM) : null,
-      returnOnEquity: d.ReturnOnEquityTTM && d.ReturnOnEquityTTM !== "None" ? parseFloat(d.ReturnOnEquityTTM) * 100 : null,
-      debtToEquity: d.DebtToEquityRatio && d.DebtToEquityRatio !== "None" ? parseFloat(d.DebtToEquityRatio) : null,
-      analystRating: d.AnalystRatingBuy ? {
-        buy: parseInt(d.AnalystRatingBuy || "0"),
-        hold: parseInt(d.AnalystRatingHold || "0"),
-        sell: parseInt(d.AnalystRatingSell || "0"),
-      } : null,
+      name: d.name || symbol,
+      sector: d.sic_description || "N/A",
+      industry: d.sic_description || "N/A",
+      description: (d.description || "").slice(0, 600),
+      marketCap: d.market_cap || null,
+      peRatio: null, // Polygon free không có P/E
+      forwardPE: null,
+      pbRatio: null,
+      eps: null,
+      beta: null,
+      dividendYield: null,
+      week52High: null,
+      week52Low: null,
+      targetPrice: null,
+      revenueGrowthYOY: null,
+      profitMargin: null,
+      revenuePerShare: null,
+      returnOnEquity: null,
+      debtToEquity: null,
+      analystRating: null,
+      website: d.homepage_url || "",
+      employees: d.total_employees || null,
     };
   } catch { return null; }
 }
 
-// Alpha Vantage — tin tức thật
+// Polygon.io — tin tức thật
 async function getAlphaNews(symbol: string) {
-  if (!ALPHA_VANTAGE_KEY) return [];
+  if (!POLYGON_KEY) return [];
   try {
     const res = await fetch(
-      `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${symbol}&limit=8&apikey=${ALPHA_VANTAGE_KEY}`
+      `https://api.polygon.io/v2/reference/news?ticker=${symbol}&limit=8&order=desc&apiKey=${POLYGON_KEY}`
     );
     if (!res.ok) return [];
     const json = await res.json();
-    const feed = json?.feed || [];
-    return feed.slice(0, 8).map((n: any) => ({
+    const results = json?.results || [];
+    return results.slice(0, 8).map((n: any) => ({
       title: n.title || "",
       titleVi: "",
-      url: n.url || "",
-      source: n.source || "Alpha Vantage",
-      publishedAt: n.time_published ? n.time_published.slice(0, 10) : "",
-      sentiment: n.overall_sentiment_label?.toLowerCase().includes("bullish") ? "positive"
-        : n.overall_sentiment_label?.toLowerCase().includes("bearish") ? "negative" : "neutral",
-      sentimentScore: n.overall_sentiment_score || 0,
+      url: n.article_url || "",
+      source: n.publisher?.name || "Polygon News",
+      publishedAt: n.published_utc ? n.published_utc.slice(0, 10) : "",
+      sentiment: n.insights?.[0]?.sentiment === "positive" ? "positive"
+        : n.insights?.[0]?.sentiment === "negative" ? "negative" : "neutral",
+      sentimentScore: 0,
     }));
   } catch { return []; }
 }
@@ -441,11 +469,16 @@ export async function POST(req: Request) {
   const lows: number[] = quote.low.filter((p: number) => p != null);
   const volumes: number[] = quote.volume.filter((v: number) => v != null);
 
-  // Giá từ Alpha Vantage, fallback Yahoo v8
+  // Giá từ Polygon.io, fallback Yahoo v8
   const aq = alphaQuote.status === "fulfilled" ? alphaQuote.value : null;
   const currentPrice: number = aq?.price || result.meta.regularMarketPrice;
   const priceChange = aq?.change || 0;
   const priceChangePct = aq?.changePct || 0;
+
+  // After-hours từ Polygon
+  const afterHoursPrice: number | undefined = aq?.afterHoursPrice;
+  const afterHoursPct: number | undefined = aq?.afterHoursPct;
+  const afterHoursLabel: string = aq?.afterHoursLabel || "";
 
   if (closes.length < 50) return NextResponse.json({ error: "Not enough data" });
 
