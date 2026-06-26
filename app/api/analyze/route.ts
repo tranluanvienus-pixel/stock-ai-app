@@ -3,80 +3,103 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || "";
+const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
 
 // ─── DATA FETCHERS ────────────────────────────────────────────────────────────
 
+// Yahoo v8 — lấy dữ liệu lịch sử (vẫn hoạt động trên Vercel)
 async function getStockData(symbol: string) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`;
   const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   return res.json();
 }
 
-// Yahoo Finance real-time quote + after-hours (v7 quote API)
-async function getYahooQuote(symbol: string) {
+// Alpha Vantage — giá real-time + after-hours (không bị block trên Vercel)
+async function getAlphaQuote(symbol: string) {
+  if (!ALPHA_VANTAGE_KEY) return null;
   try {
-    // Try multiple Yahoo endpoints for real-time + after-hours
-    for (const host of ["query1", "query2"]) {
-      const res = await fetch(
-        `https://${host}.finance.yahoo.com/v7/finance/quote?symbols=${symbol}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,postMarketPrice,postMarketChange,postMarketChangePercent,preMarketPrice,preMarketChange,preMarketChangePercent,marketCap,shortName,longName`,
-        { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Accept": "application/json" } }
-      );
-      if (!res.ok) continue;
-      const json = await res.json();
-      const q = json?.quoteResponse?.result?.[0];
-      if (q) return q;
-    }
-    return null;
+    const res = await fetch(
+      `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const q = json?.["Global Quote"];
+    if (!q || !q["05. price"]) return null;
+    return {
+      price: parseFloat(q["05. price"]),
+      change: parseFloat(q["09. change"]),
+      changePct: parseFloat(q["10. change percent"]?.replace("%", "")),
+      high: parseFloat(q["03. high"]),
+      low: parseFloat(q["04. low"]),
+      volume: parseInt(q["06. volume"]),
+      prevClose: parseFloat(q["08. previous close"]),
+    };
   } catch { return null; }
 }
 
-// Yahoo Finance company info (thông tin công ty thật)
-async function getCompanyInfo(symbol: string) {
-  const modules = "assetProfile,summaryDetail,financialData,defaultKeyStatistics,price";
-  const headers = { 
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://finance.yahoo.com/quote/" + symbol,
-  };
-  // Try query2 first, then query1
-  for (const host of ["query2", "query1"]) {
-    try {
-      const res = await fetch(
-        `https://${host}.finance.yahoo.com/v11/finance/quoteSummary/${symbol}?modules=${modules}`,
-        { headers }
-      );
-      if (!res.ok) continue;
-      const json = await res.json();
-      const result = json?.quoteSummary?.result?.[0];
-      if (result) return result;
-    } catch {}
-  }
-  return null;
-}
-
-// Yahoo Finance tin tức thật
-async function getRealNews(symbol: string) {
+// Alpha Vantage — company overview (thông tin công ty thật)
+async function getAlphaCompany(symbol: string) {
+  if (!ALPHA_VANTAGE_KEY) return null;
   try {
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v1/finance/search?q=${symbol}&quotesCount=0&newsCount=6`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+      `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`
+    );
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!d?.Symbol) return null;
+    return {
+      name: d.Name || symbol,
+      sector: d.Sector || "N/A",
+      industry: d.Industry || "N/A",
+      description: (d.Description || "").slice(0, 600),
+      marketCap: d.MarketCapitalization ? parseInt(d.MarketCapitalization) : null,
+      peRatio: d.PERatio && d.PERatio !== "None" ? parseFloat(d.PERatio) : null,
+      forwardPE: d.ForwardPE && d.ForwardPE !== "None" ? parseFloat(d.ForwardPE) : null,
+      pbRatio: d.PriceToBookRatio && d.PriceToBookRatio !== "None" ? parseFloat(d.PriceToBookRatio) : null,
+      eps: d.EPS && d.EPS !== "None" ? parseFloat(d.EPS) : null,
+      beta: d.Beta && d.Beta !== "None" ? parseFloat(d.Beta) : null,
+      dividendYield: d.DividendYield && d.DividendYield !== "None" ? parseFloat(d.DividendYield) * 100 : null,
+      week52High: d["52WeekHigh"] && d["52WeekHigh"] !== "None" ? parseFloat(d["52WeekHigh"]) : null,
+      week52Low: d["52WeekLow"] && d["52WeekLow"] !== "None" ? parseFloat(d["52WeekLow"]) : null,
+      targetPrice: d.AnalystTargetPrice && d.AnalystTargetPrice !== "None" ? parseFloat(d.AnalystTargetPrice) : null,
+      revenueGrowthYOY: d.QuarterlyRevenueGrowthYOY && d.QuarterlyRevenueGrowthYOY !== "None" ? parseFloat(d.QuarterlyRevenueGrowthYOY) * 100 : null,
+      profitMargin: d.ProfitMargin && d.ProfitMargin !== "None" ? parseFloat(d.ProfitMargin) * 100 : null,
+      revenuePerShare: d.RevenuePerShareTTM && d.RevenuePerShareTTM !== "None" ? parseFloat(d.RevenuePerShareTTM) : null,
+      returnOnEquity: d.ReturnOnEquityTTM && d.ReturnOnEquityTTM !== "None" ? parseFloat(d.ReturnOnEquityTTM) * 100 : null,
+      debtToEquity: d.DebtToEquityRatio && d.DebtToEquityRatio !== "None" ? parseFloat(d.DebtToEquityRatio) : null,
+      analystRating: d.AnalystRatingBuy ? {
+        buy: parseInt(d.AnalystRatingBuy || "0"),
+        hold: parseInt(d.AnalystRatingHold || "0"),
+        sell: parseInt(d.AnalystRatingSell || "0"),
+      } : null,
+    };
+  } catch { return null; }
+}
+
+// Alpha Vantage — tin tức thật
+async function getAlphaNews(symbol: string) {
+  if (!ALPHA_VANTAGE_KEY) return [];
+  try {
+    const res = await fetch(
+      `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${symbol}&limit=8&apikey=${ALPHA_VANTAGE_KEY}`
     );
     if (!res.ok) return [];
     const json = await res.json();
-    return (json?.news || []).slice(0, 6).map((n: any) => ({
+    const feed = json?.feed || [];
+    return feed.slice(0, 8).map((n: any) => ({
       title: n.title || "",
-      titleVi: "", // will be filled by Groq if needed
-      url: n.link || "",
-      source: n.publisher || "Yahoo Finance",
-      publishedAt: new Date((n.providerPublishTime || 0) * 1000).toISOString(),
-      sentiment: analyzeSentiment(n.title || ""),
+      titleVi: "",
+      url: n.url || "",
+      source: n.source || "Alpha Vantage",
+      publishedAt: n.time_published ? n.time_published.slice(0, 10) : "",
+      sentiment: n.overall_sentiment_label?.toLowerCase().includes("bullish") ? "positive"
+        : n.overall_sentiment_label?.toLowerCase().includes("bearish") ? "negative" : "neutral",
+      sentimentScore: n.overall_sentiment_score || 0,
     }));
   } catch { return []; }
 }
 
-// VIX real-time
+// VIX real-time từ Yahoo v8 (vẫn hoạt động)
 async function getVIX() {
   try {
     const res = await fetch(
@@ -86,15 +109,15 @@ async function getVIX() {
     if (!res.ok) return null;
     const json = await res.json();
     const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter((c: number) => c != null) || [];
+    if (closes.length < 2) return null;
     const current = closes[closes.length - 1];
     const prev = closes[closes.length - 2];
     return { value: current, change: current - prev, changePct: ((current - prev) / prev) * 100 };
   } catch { return null; }
 }
 
-// Fear & Greed Index — CNN first (most accurate), Alternative.me as fallback
+// Fear & Greed — CNN + fallback
 async function getFearGreed() {
-  // 1. Try CNN API directly (most accurate, matches cnn.com/markets/fear-and-greed)
   try {
     const res = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
       headers: {
@@ -112,19 +135,6 @@ async function getFearGreed() {
     }
   } catch {}
 
-  // 2. Try CNN backup endpoint
-  try {
-    const res = await fetch("https://fear-and-greed-index.p.rapidapi.com/v1/fgi", {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
-    if (res.ok) {
-      const json = await res.json();
-      const score = json?.fgi?.now?.value;
-      if (score) return { score: Math.round(score), rating: json?.fgi?.now?.valueText || "", source: "RapidAPI" };
-    }
-  } catch {}
-
-  // 3. Alternative.me (crypto F&G — different from stock market but good indicator)
   try {
     const res = await fetch("https://api.alternative.me/fng/?limit=1", {
       headers: { "User-Agent": "Mozilla/5.0" }
@@ -132,16 +142,14 @@ async function getFearGreed() {
     if (res.ok) {
       const json = await res.json();
       const item = json?.data?.[0];
-      if (item) {
-        return { score: parseInt(item.value), rating: item.value_classification, source: "Alternative.me" };
-      }
+      if (item) return { score: parseInt(item.value), rating: item.value_classification, source: "Alternative.me" };
     }
   } catch {}
 
   return null;
 }
 
-// Sector ETF performance
+// Sector ETF performance (Yahoo v8 vẫn hoạt động)
 async function getSectorRotation() {
   const sectors = [
     { name: "Technology", nameVi: "Công nghệ", symbol: "XLK", topStocks: ["NVDA", "AAPL", "MSFT"] },
@@ -156,7 +164,6 @@ async function getSectorRotation() {
     { name: "Comm. Services", nameVi: "Dịch vụ TT", symbol: "XLC", topStocks: ["GOOGL", "META", "NFLX"] },
     { name: "Consumer Staples", nameVi: "Hàng thiết yếu", symbol: "XLP", topStocks: ["PG", "KO", "WMT"] },
   ];
-
   const results = await Promise.allSettled(
     sectors.map(async (s) => {
       try {
@@ -177,8 +184,7 @@ async function getSectorRotation() {
       }
     })
   );
-  return results.filter(r => r.status === "fulfilled").map((r: any) => r.value)
-    .sort((a: any, b: any) => b.perf5d - a.perf5d);
+  return results.filter(r => r.status === "fulfilled").map((r: any) => r.value).sort((a: any, b: any) => b.perf5d - a.perf5d);
 }
 
 // ─── SENTIMENT ────────────────────────────────────────────────────────────────
@@ -297,11 +303,12 @@ function calcSectorStrength(closes: number[]) {
   };
 }
 
-// ─── GROQ AI — KẾT HỢP TẤT CẢ → VERDICT CUỐI CÙNG ──────────────────────────
+// ─── GROQ AI ──────────────────────────────────────────────────────────────────
 async function analyzeWithGroq(params: {
   symbol: string; companyName: string; sector: string; industry: string;
-  price: number; afterHoursPrice?: number; afterHoursPct?: number;
-  peRatio?: number; revenueGrowth?: number; profitMargin?: number; marketCap?: number;
+  price: number;
+  peRatio?: number | null; revenueGrowth?: number | null; profitMargin?: number | null; marketCap?: number | null;
+  targetPrice?: number | null; returnOnEquity?: number | null; debtToEquity?: number | null;
   score: number; rsi: number; stochRSI: number;
   ma20: number; ma50: number; ma200: number | null;
   macd: { macdLine: number; signal: number };
@@ -326,17 +333,18 @@ async function analyzeWithGroq(params: {
   const newsText = (params.news || []).slice(0, 4).map(n => `[${n.sentiment.toUpperCase()}] ${n.title}`).join("\n");
   const topSectorText = (params.topSectors || []).slice(0, 5).map(s => `${s.nameVi}: ${s.perf5d > 0 ? "+" : ""}${s.perf5d.toFixed(1)}% (${s.flowSignal})`).join(", ");
 
-  const prompt = `Bạn là chuyên gia phân tích chứng khoán Mỹ hàng đầu với 20 năm kinh nghiệm. Phân tích toàn diện và đưa ra kết luận cuối cùng cho ${params.symbol}.
+  const prompt = `Bạn là chuyên gia phân tích chứng khoán Mỹ hàng đầu với 20 năm kinh nghiệm. Phân tích toàn diện cho ${params.symbol}.
 
 == THÔNG TIN CÔNG TY ==
 Tên: ${params.companyName} | Ngành: ${params.sector} - ${params.industry}
-Vốn hóa: ${params.marketCap ? "$" + (params.marketCap/1e9).toFixed(1) + "B" : "N/A"} | P/E: ${params.peRatio?.toFixed(1) || "N/A"} | Tăng trưởng DT: ${params.revenueGrowth?.toFixed(1) || "N/A"}% | Biên LN: ${params.profitMargin?.toFixed(1) || "N/A"}%
+Vốn hóa: ${params.marketCap ? "$" + (params.marketCap/1e9).toFixed(1) + "B" : "N/A"} | P/E: ${params.peRatio?.toFixed(1) || "N/A"}
+Tăng trưởng DT: ${params.revenueGrowth?.toFixed(1) || "N/A"}% | Biên LN: ${params.profitMargin?.toFixed(1) || "N/A"}%
+ROE: ${params.returnOnEquity?.toFixed(1) || "N/A"}% | D/E: ${params.debtToEquity?.toFixed(2) || "N/A"}
+Giá mục tiêu analyst: ${params.targetPrice ? "$" + params.targetPrice.toFixed(2) : "N/A"}
 
-== GIÁ REAL-TIME ==
-Giá hiện tại: $${params.price.toFixed(2)}
-${params.afterHoursPrice ? `After-hours: $${params.afterHoursPrice.toFixed(2)} (${params.afterHoursPct?.toFixed(2)}%)` : ""}
+== GIÁ: $${params.price.toFixed(2)} ==
 
-== 18 CHỈ BÁO KỸ THUẬT (Điểm tổng: ${params.score}/100) ==
+== 18 CHỈ BÁO KỸ THUẬT (Điểm: ${params.score}/100) ==
 RSI: ${params.rsi.toFixed(1)} | StochRSI: ${params.stochRSI.toFixed(1)} | ADX: ${params.adx.adx.toFixed(1)}
 MA20: $${params.ma20.toFixed(2)} | MA50: $${params.ma50.toFixed(2)} | MA200: ${params.ma200 ? "$" + params.ma200.toFixed(2) : "N/A"}
 MACD: ${params.macd.macdLine.toFixed(3)} vs Signal: ${params.macd.signal.toFixed(3)}
@@ -348,29 +356,17 @@ Hiệu suất 5 ngày: ${params.perf5d.toFixed(2)}% | 20 ngày: ${params.perf20d
 VIX: ${params.vix ? params.vix.value.toFixed(2) + " (" + (params.vix.changePct >= 0 ? "+" : "") + params.vix.changePct.toFixed(2) + "%)" : "N/A"}
 Fear & Greed: ${params.fearGreed ? params.fearGreed.score + "/100 - " + params.fearGreed.rating : "N/A"}
 
-== LUÂN CHUYỂN NGÀNH (5 ngày) ==
+== LUÂN CHUYỂN NGÀNH ==
 ${topSectorText || "N/A"}
 
-== TIN TỨC GẦN ĐÂY ==
+== TIN TỨC ==
 ${newsText || "Không có tin tức"}
 
 == LÝ DO MUA: ${params.reasons_buy.slice(0,3).join(" | ")}
 == LÝ DO TRÁNH: ${params.reasons_avoid.slice(0,3).join(" | ")}
 
-Dựa trên TẤT CẢ dữ liệu trên, hãy đưa ra kết luận cuối cùng. Trả lời JSON thuần túy:
-{
-  "finalVerdict": "STRONG BUY" hoặc "BUY" hoặc "WATCH" hoặc "AVOID" hoặc "STRONG AVOID",
-  "finalVerdictVi": "MUA MẠNH" hoặc "NÊN MUA" hoặc "THEO DÕI" hoặc "TRÁNH" hoặc "TRÁNH MẠNH",
-  "finalAction": "Hành động cụ thể ngắn gọn bằng tiếng Việt",
-  "aiScore": số từ 0-100,
-  "confidence": "Cao" hoặc "Trung bình" hoặc "Thấp",
-  "groqSummary": "Tóm tắt phân tích tổng hợp 2-3 câu, kết hợp kỹ thuật + cơ bản + tâm lý thị trường",
-  "groqAdvice": "Lời khuyên hành động cụ thể: giá vào lệnh, stop loss, mục tiêu, thời điểm",
-  "groqRisk": "Rủi ro chính cần lưu ý 1-2 câu",
-  "sellPutAI": "Đánh giá Sell Put: an toàn không, strike gợi ý, thời hạn",
-  "sellCallAI": "Đánh giá Sell Call: có nên không và lý do",
-  "sectorRotationAdvice": "Ngành nào đang được dòng tiền vào 2-4 tuần tới và lý do ngắn gọn"
-}`;
+Trả lời JSON thuần túy:
+{"finalVerdict":"STRONG BUY hoặc BUY hoặc WATCH hoặc AVOID hoặc STRONG AVOID","finalVerdictVi":"MUA MẠNH hoặc NÊN MUA hoặc THEO DÕI hoặc TRÁNH hoặc TRÁNH MẠNH","finalAction":"Hành động cụ thể bằng tiếng Việt","aiScore":số 0-100,"confidence":"Cao hoặc Trung bình hoặc Thấp","groqSummary":"Tóm tắt tổng hợp 2-3 câu tiếng Việt","groqAdvice":"Lời khuyên cụ thể: giá vào, stop loss, mục tiêu","groqRisk":"Rủi ro chính 1-2 câu","sellPutAI":"Đánh giá Sell Put: an toàn không, strike, thời hạn","sellCallAI":"Đánh giá Sell Call","sectorRotationAdvice":"Ngành nào dòng tiền đang vào 2-4 tuần tới"}`;
 
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -392,7 +388,7 @@ Dựa trên TẤT CẢ dữ liệu trên, hãy đưa ra kết luận cuối cùn
   } catch { return null; }
 }
 
-// ─── WATCHLIST ENDPOINT ───────────────────────────────────────────────────────
+// ─── WATCHLIST + SECTORS ENDPOINT ────────────────────────────────────────────
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const action = searchParams.get("action");
@@ -400,19 +396,9 @@ export async function GET(req: Request) {
   if (action === "watchlist") {
     const symbols = (searchParams.get("symbols") || "").split(",").filter(Boolean);
     const results = await Promise.allSettled(symbols.map(async (sym) => {
-      const q = await getYahooQuote(sym);
-      if (!q || !q.regularMarketPrice) return null;
-      return { 
-        symbol: sym.toUpperCase(), 
-        price: q.regularMarketPrice, 
-        change: q.regularMarketChange, 
-        changePct: q.regularMarketChangePercent,
-        high: q.regularMarketDayHigh,
-        low: q.regularMarketDayLow,
-        open: q.regularMarketOpen,
-        prevClose: q.regularMarketPreviousClose,
-        companyName: q.longName || q.shortName || sym,
-      };
+      const q = await getAlphaQuote(sym);
+      if (!q) return null;
+      return { symbol: sym.toUpperCase(), price: q.price, change: q.change, changePct: q.changePct };
     }));
     return NextResponse.json({ watchlist: results.filter(r => r.status === "fulfilled" && (r as any).value).map((r: any) => r.value) });
   }
@@ -435,11 +421,11 @@ export async function POST(req: Request) {
   const { symbol } = await req.json();
 
   // Fetch tất cả song song
-  const [yahooData, yahooQuote, companyInfoData, realNews, vix, fearGreed, sectorData] = await Promise.allSettled([
+  const [yahooData, alphaQuote, alphaCompany, alphaNews, vix, fearGreed, sectorData] = await Promise.allSettled([
     getStockData(symbol),
-    getYahooQuote(symbol),
-    getCompanyInfo(symbol),
-    getRealNews(symbol),
+    getAlphaQuote(symbol),
+    getAlphaCompany(symbol),
+    getAlphaNews(symbol),
     getVIX(),
     getFearGreed(),
     getSectorRotation(),
@@ -455,70 +441,36 @@ export async function POST(req: Request) {
   const lows: number[] = quote.low.filter((p: number) => p != null);
   const volumes: number[] = quote.volume.filter((v: number) => v != null);
 
-  // Dùng Yahoo v7 real-time quote
-  const yq = (yahooQuote as any)?.status === "fulfilled" ? (yahooQuote as any).value : null;
-  const currentPrice: number = yq?.regularMarketPrice || result.meta.regularMarketPrice;
+  // Giá từ Alpha Vantage, fallback Yahoo v8
+  const aq = alphaQuote.status === "fulfilled" ? alphaQuote.value : null;
+  const currentPrice: number = aq?.price || result.meta.regularMarketPrice;
+  const priceChange = aq?.change || 0;
+  const priceChangePct = aq?.changePct || 0;
 
   if (closes.length < 50) return NextResponse.json({ error: "Not enough data" });
 
-  // Thông tin công ty thật từ Yahoo
-  const ci = companyInfoData.status === "fulfilled" ? companyInfoData.value : null;
-  const profile = ci?.assetProfile || {};
-  const summaryDetail = ci?.summaryDetail || {};
-  const financialData = ci?.financialData || {};
-  const keyStats = ci?.defaultKeyStatistics || {};
-  const priceInfo = ci?.price || {};
+  // Thông tin công ty từ Alpha Vantage
+  const co = alphaCompany.status === "fulfilled" ? alphaCompany.value : null;
+  const companyName = co?.name || result.meta.longName || result.meta.shortName || symbol;
+  const sector = co?.sector || "N/A";
+  const industry = co?.industry || "N/A";
+  const description = co?.description || "";
+  const peRatio = co?.peRatio || null;
+  const forwardPE = co?.forwardPE || null;
+  const marketCap = co?.marketCap || null;
+  const revenueGrowth = co?.revenueGrowthYOY || null;
+  const profitMargin = co?.profitMargin || null;
+  const targetPrice = co?.targetPrice || null;
+  const dividendYield = co?.dividendYield || null;
+  const beta = co?.beta || null;
+  const week52High = co?.week52High || null;
+  const week52Low = co?.week52Low || null;
+  const returnOnEquity = co?.returnOnEquity || null;
+  const debtToEquity = co?.debtToEquity || null;
+  const analystRating = co?.analystRating || null;
 
-  // Helper: Yahoo trả về { raw: number } hoặc số trực tiếp
-  const raw = (v: any) => (v && typeof v === "object" && "raw" in v) ? v.raw : v;
-
-  // Company name: thử nhiều nguồn
-  const companyName = raw(priceInfo?.longName) || raw(priceInfo?.shortName) || 
-                      yq?.longName || yq?.shortName ||
-                      result.meta.longName || result.meta.shortName || result.meta.symbol;
-  const sector = raw(profile?.sector) || "N/A";
-  const industry = raw(profile?.industry) || "N/A";
-  const description = raw(profile?.longBusinessSummary) || "";
-  const peRatio = raw(summaryDetail?.trailingPE) || raw(keyStats?.forwardPE);
-  const forwardPE = raw(summaryDetail?.forwardPE);
-  const marketCap = raw(priceInfo?.marketCap) || raw(summaryDetail?.marketCap);
-  const revenueGrowth = raw(financialData?.revenueGrowth) ? raw(financialData.revenueGrowth) * 100 : undefined;
-  const profitMargin = raw(financialData?.profitMargins) ? raw(financialData.profitMargins) * 100 : undefined;
-  const targetPrice = raw(financialData?.targetMeanPrice);
-  const dividendYield = raw(summaryDetail?.dividendYield) ? raw(summaryDetail.dividendYield) * 100 : 0;
-  const beta = raw(summaryDetail?.beta);
-  const week52High = raw(summaryDetail?.fiftyTwoWeekHigh) || raw(priceInfo?.fiftyTwoWeekHigh) || 0;
-  const week52Low = raw(summaryDetail?.fiftyTwoWeekLow) || raw(priceInfo?.fiftyTwoWeekLow) || 0;
-
-  // After-hours từ Yahoo v7 quote API
-  let afterHoursPrice: number | undefined = undefined;
-  let afterHoursPct: number | undefined = undefined;
-  let afterHoursLabel = "";
-
-  if (yq?.postMarketPrice && Math.abs(yq.postMarketPrice - currentPrice) > 0.001) {
-    afterHoursPrice = yq.postMarketPrice;
-    afterHoursPct = yq.postMarketChangePercent;
-    afterHoursLabel = "Post-market";
-  } else if (yq?.preMarketPrice && Math.abs(yq.preMarketPrice - currentPrice) > 0.001) {
-    afterHoursPrice = yq.preMarketPrice;
-    afterHoursPct = yq.preMarketChangePercent;
-    afterHoursLabel = "Pre-market";
-  } else {
-    const metaPost = result.meta.postMarketPrice;
-    const metaPre = result.meta.preMarketPrice;
-    if (metaPost && Math.abs(metaPost - currentPrice) > 0.001) {
-      afterHoursPrice = metaPost;
-      afterHoursPct = ((metaPost - currentPrice) / currentPrice) * 100;
-      afterHoursLabel = "Post-market";
-    } else if (metaPre && Math.abs(metaPre - currentPrice) > 0.001) {
-      afterHoursPrice = metaPre;
-      afterHoursPct = ((metaPre - currentPrice) / currentPrice) * 100;
-      afterHoursLabel = "Pre-market";
-    }
-  }
-
-  // Tin tức thật
-  const news = realNews.status === "fulfilled" ? realNews.value : [];
+  // Tin tức từ Alpha Vantage
+  const news: any[] = alphaNews.status === "fulfilled" ? alphaNews.value : [];
   const vixData = vix.status === "fulfilled" ? vix.value : null;
   const fearGreedData = fearGreed.status === "fulfilled" ? fearGreed.value : null;
   const sectors = sectorData.status === "fulfilled" ? sectorData.value : [];
@@ -547,7 +499,7 @@ export async function POST(req: Request) {
   const sellVolumeEst = currentVol - buyVolumeEst;
   const buyPct = Math.round((buyVolumeEst / currentVol) * 100);
 
-  // Tính score kỹ thuật
+  // Scoring
   let score = 50;
   const signals: string[] = [];
   const reasons_buy: string[] = [];
@@ -602,13 +554,11 @@ export async function POST(req: Request) {
   if (perf.perf5d > 3) { score += 3; reasons_buy.push("Momentum 5 ngày +" + perf.perf5d.toFixed(1) + "%"); }
   else if (perf.perf5d < -5) { score -= 5; reasons_avoid.push("Giảm " + Math.abs(perf.perf5d).toFixed(1) + "% trong 5 ngày"); }
 
-  // VIX adjustment
   if (vixData) {
     if (vixData.value > 30) { score -= 5; reasons_avoid.push("VIX " + vixData.value.toFixed(1) + " — thị trường sợ hãi cao"); }
     else if (vixData.value < 15) { score += 3; reasons_buy.push("VIX thấp " + vixData.value.toFixed(1) + " — thị trường ổn định"); }
   }
 
-  // Fear & Greed adjustment
   if (fearGreedData) {
     if (fearGreedData.score < 25) { score += 5; reasons_buy.push("Fear & Greed " + fearGreedData.score + " — cực kỳ sợ hãi, cơ hội mua"); }
     else if (fearGreedData.score > 75) { score -= 5; reasons_avoid.push("Fear & Greed " + fearGreedData.score + " — cực kỳ tham lam, cẩn thận"); }
@@ -616,7 +566,6 @@ export async function POST(req: Request) {
 
   score = Math.max(0, Math.min(100, score));
 
-  // Verdict kỹ thuật ban đầu
   let verdict = "WATCH", verdictVi = "THEO DÕI", action = "Wait for clearer signal", actionVi = "Chờ tín hiệu rõ hơn";
   if (score >= 80) { verdict = "STRONG BUY"; verdictVi = "MUA MẠNH"; action = "Strong entry"; actionVi = "Vào lệnh mạnh — Mua cổ & Bán Put"; }
   else if (score >= 68) { verdict = "BUY"; verdictVi = "NÊN MUA"; action = "Good entry"; actionVi = "Vào lệnh tốt — xác nhận bằng volume"; }
@@ -636,7 +585,7 @@ export async function POST(req: Request) {
   const target3 = (currentPrice * 1.15).toFixed(2);
   const targetLong = (currentPrice * 1.30).toFixed(2);
 
-  // Dịch tiêu đề tin tức sang tiếng Việt bằng Groq
+  // Dịch tin tức bằng Groq
   if (GROQ_API_KEY && news.length > 0) {
     try {
       const titles = news.map((n: any) => n.title).join("\n");
@@ -646,8 +595,8 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: [
-            { role: "system", content: "Dịch các tiêu đề tin tức chứng khoán từ tiếng Anh sang tiếng Việt. Trả về JSON array các chuỗi đã dịch, đúng thứ tự, không markdown." },
-            { role: "user", content: `Dịch ${news.length} tiêu đề sau:\n${titles}\nTrả về JSON array: ["dịch 1","dịch 2",...]` }
+            { role: "system", content: "Dịch tiêu đề tin tức chứng khoán Anh→Việt. Trả về JSON array, không markdown." },
+            { role: "user", content: `Dịch:\n${titles}\nTrả về: ["dịch 1","dịch 2",...]` }
           ],
           temperature: 0.1, max_tokens: 400,
         }),
@@ -663,11 +612,12 @@ export async function POST(req: Request) {
     } catch {}
   }
 
-  // Groq AI — verdict cuối cùng
+  // Groq AI phân tích tổng hợp
   const groqResult = await analyzeWithGroq({
     symbol, companyName, sector, industry,
-    price: currentPrice, afterHoursPrice, afterHoursPct: afterHoursPct,
+    price: currentPrice,
     peRatio, revenueGrowth, profitMargin, marketCap,
+    targetPrice, returnOnEquity, debtToEquity,
     score, rsi, stochRSI, ma20, ma50, ma200, macd, bb, atr, adx, obv,
     ivRank: ivData.ivRank, perf5d: perf.perf5d, perf20d: perf.perf20d,
     vix: vixData, fearGreed: fearGreedData,
@@ -676,7 +626,6 @@ export async function POST(req: Request) {
     reasons_buy, reasons_avoid,
   }).catch(() => null);
 
-  // Dùng verdict từ Groq AI nếu có, không thì dùng verdict kỹ thuật
   const finalVerdict = groqResult?.finalVerdict || verdict;
   const finalVerdictVi = groqResult?.finalVerdictVi || verdictVi;
   const finalAction = groqResult?.finalAction || actionVi;
@@ -686,31 +635,31 @@ export async function POST(req: Request) {
     symbol: symbol.toUpperCase(),
     companyName, sector, industry, description,
     price: currentPrice.toFixed(2),
-    afterHoursPrice: afterHoursPrice?.toFixed(2),
-    afterHoursPct: afterHoursPct?.toFixed(2),
-    afterHoursLabel: afterHoursLabel || undefined,
-    peRatio: peRatio?.toFixed(2), forwardPE: forwardPE?.toFixed(2),
-    marketCap, targetPrice: targetPrice?.toFixed(2),
-    dividendYield: dividendYield?.toFixed(2), beta: beta?.toFixed(2),
-    week52High: week52High?.toFixed(2), week52Low: week52Low?.toFixed(2),
-    // Scores
+    priceChange: priceChange.toFixed(2),
+    priceChangePct: priceChangePct.toFixed(2),
+    peRatio: peRatio?.toFixed(2) || null,
+    forwardPE: forwardPE?.toFixed(2) || null,
+    marketCap,
+    targetPrice: targetPrice?.toFixed(2) || null,
+    dividendYield: dividendYield?.toFixed(2) || null,
+    beta: beta?.toFixed(2) || null,
+    week52High: week52High?.toFixed(2) || null,
+    week52Low: week52Low?.toFixed(2) || null,
+    returnOnEquity: returnOnEquity?.toFixed(1) || null,
+    debtToEquity: debtToEquity?.toFixed(2) || null,
+    analystRating,
     score, aiScore,
-    // Verdict cuối từ AI
     verdict: finalVerdict, verdictVi: finalVerdictVi,
     action: finalAction, actionVi: finalAction,
     aiConfidence: groqResult?.confidence || "N/A",
-    // Groq AI analysis
     groqSummary: groqResult?.groqSummary || null,
     groqAdvice: groqResult?.groqAdvice || null,
     groqRisk: groqResult?.groqRisk || null,
     sellPutAI: groqResult?.sellPutAI || null,
     sellCallAI: groqResult?.sellCallAI || null,
     sectorRotationAdvice: groqResult?.sectorRotationAdvice || null,
-    // Market data
     vix: vixData, fearGreed: fearGreedData,
-    // Tin tức thật
     news,
-    // Sector rotation
     sectorRotation: sectors,
     indicators: {
       rsi: rsi.toFixed(2), stochRSI: stochRSI.toFixed(2),
