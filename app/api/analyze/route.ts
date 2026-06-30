@@ -393,8 +393,45 @@ ${newsText || "Không có tin tức"}
 == LÝ DO MUA: ${params.reasons_buy.slice(0,3).join(" | ")}
 == LÝ DO TRÁNH: ${params.reasons_avoid.slice(0,3).join(" | ")}
 
-Trả lời JSON thuần túy:
-{"finalVerdict":"STRONG BUY hoặc BUY hoặc WATCH hoặc AVOID hoặc STRONG AVOID","finalVerdictVi":"MUA MẠNH hoặc NÊN MUA hoặc THEO DÕI hoặc TRÁNH hoặc TRÁNH MẠNH","finalAction":"Hành động cụ thể bằng tiếng Việt","aiScore":số 0-100,"confidence":"Cao hoặc Trung bình hoặc Thấp","groqSummary":"Tóm tắt tổng hợp 2-3 câu tiếng Việt","groqAdvice":"Lời khuyên cụ thể: giá vào, stop loss, mục tiêu","groqRisk":"Rủi ro chính 1-2 câu","sellPutAI":"Đánh giá Sell Put: an toàn không, strike, thời hạn","sellCallAI":"Đánh giá Sell Call","sectorRotationAdvice":"Ngành nào dòng tiền đang vào 2-4 tuần tới"}`;
+Trả lời JSON thuần túy với TẤT CẢ các trường sau:
+{
+  "finalVerdict":"STRONG BUY hoặc BUY hoặc WATCH hoặc AVOID hoặc STRONG AVOID",
+  "finalVerdictVi":"MUA MẠNH hoặc NÊN MUA hoặc THEO DÕI hoặc TRÁNH hoặc TRÁNH MẠNH",
+  "finalAction":"Hành động cụ thể bằng tiếng Việt",
+  "aiScore":số 0-100,
+  "confidence":"Cao hoặc Trung bình hoặc Thấp",
+  "marketRegime":"BULL hoặc BEAR hoặc SIDEWAYS hoặc HIGH_VOLATILITY",
+  "marketRegimeVi":"Thị trường tăng hoặc Thị trường giảm hoặc Đi ngang hoặc Biến động cao",
+  "marketRegimeStrategy":"Chiến lược phù hợp với chế độ thị trường hiện tại — 1 câu tiếng Việt",
+  "probUp":số 0-100 (xác suất tăng trong 5 ngày),
+  "probSideways":số 0-100 (xác suất đi ngang),
+  "probDown":số 0-100 (xác suất giảm, tổng 3 số = 100),
+  "checklist":{
+    "trendOK":true/false,
+    "volumeOK":true/false,
+    "vixOK":true/false,
+    "fearGreedOK":true/false,
+    "macdOK":true/false,
+    "rsiOK":true/false,
+    "allowTrade":true/false
+  },
+  "newsScore":số -100 đến 100 (điểm tin tức: dương=tốt, âm=xấu),
+  "newsScoreLabel":"Rất tích cực hoặc Tích cực hoặc Trung lập hoặc Tiêu cực hoặc Rất tiêu cực",
+  "optionsScore":{
+    "sellPutScore":số 0-100,
+    "probabilityOTM":số 0-100 (xác suất hết hạn vô giá trị),
+    "riskReward":"1:X",
+    "recommendedStrike":"$XXX",
+    "recommendedExpiry":"X ngày",
+    "maxRisk":"$XXX"
+  },
+  "groqSummary":"Tóm tắt tổng hợp 2-3 câu tiếng Việt",
+  "groqAdvice":"Lời khuyên cụ thể: giá vào, stop loss, mục tiêu",
+  "groqRisk":"Rủi ro chính 1-2 câu",
+  "sellPutAI":"Đánh giá Sell Put chi tiết",
+  "sellCallAI":"Đánh giá Sell Call",
+  "sectorRotationAdvice":"Ngành nào dòng tiền đang vào 2-4 tuần tới"
+}`;
 
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -722,5 +759,18 @@ export async function POST(req: Request) {
     reasons_buy: reasons_buy.slice(0, 5),
     reasons_avoid: reasons_avoid.slice(0, 4),
     signals,
+    // ── Tính năng mới ──
+    marketRegime: groqResult?.marketRegime || null,
+    marketRegimeVi: groqResult?.marketRegimeVi || null,
+    marketRegimeStrategy: groqResult?.marketRegimeStrategy || null,
+    probability: {
+      up: groqResult?.probUp || null,
+      sideways: groqResult?.probSideways || null,
+      down: groqResult?.probDown || null,
+    },
+    checklist: groqResult?.checklist || null,
+    newsScore: groqResult?.newsScore || null,
+    newsScoreLabel: groqResult?.newsScoreLabel || null,
+    optionsScore: groqResult?.optionsScore || null,
   });
 }

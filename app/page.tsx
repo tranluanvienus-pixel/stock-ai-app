@@ -645,6 +645,91 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Market Regime + Probability + Checklist */}
+            {(result.marketRegime || result.probability?.up || result.checklist) && (
+              <div className="grid grid-cols-3 gap-3">
+                {result.marketRegime && (
+                  <div className={`rounded-xl p-3 border-2 ${result.marketRegime === "BULL" ? "bg-green-950 border-green-700" : result.marketRegime === "BEAR" ? "bg-red-950 border-red-700" : result.marketRegime === "HIGH_VOLATILITY" ? "bg-orange-950 border-orange-700" : "bg-yellow-950 border-yellow-700"}`}>
+                    <div className="text-xs font-bold text-gray-300 mb-1">📊 {t("CHẾ ĐỘ THỊ TRƯỜNG", "MARKET REGIME")}</div>
+                    <div className={`text-base font-bold mb-1 ${result.marketRegime === "BULL" ? "text-green-400" : result.marketRegime === "BEAR" ? "text-red-400" : result.marketRegime === "HIGH_VOLATILITY" ? "text-orange-400" : "text-yellow-400"}`}>
+                      {result.marketRegime === "BULL" ? "🐂 " : result.marketRegime === "BEAR" ? "🐻 " : result.marketRegime === "HIGH_VOLATILITY" ? "⚡ " : "➡️ "}
+                      {result.marketRegimeVi || result.marketRegime}
+                    </div>
+                    {result.marketRegimeStrategy && <div className="text-xs text-gray-300 leading-relaxed">{result.marketRegimeStrategy}</div>}
+                  </div>
+                )}
+                {result.probability?.up != null && (
+                  <div className="bg-gray-900 rounded-xl p-3 border border-gray-700">
+                    <div className="text-xs font-bold text-gray-300 mb-2">🎯 {t("XÁC SUẤT 5 NGÀY TỚI", "5-DAY PROBABILITY")}</div>
+                    <div className="space-y-2">
+                      {[
+                        { label: t("📈 Tăng", "📈 Up"), val: result.probability.up, color: "bg-green-600" },
+                        { label: t("➡️ Ngang", "➡️ Sideways"), val: result.probability.sideways, color: "bg-yellow-600" },
+                        { label: t("📉 Giảm", "📉 Down"), val: result.probability.down, color: "bg-red-600" },
+                      ].map((item, i) => (
+                        <div key={i}>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-gray-300">{item.label}</span>
+                            <span className="font-bold text-white">{item.val}%</span>
+                          </div>
+                          <div className="bg-gray-700 rounded-full h-1.5">
+                            <div className={`${item.color} h-1.5 rounded-full`} style={{ width: `${item.val}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {result.checklist && (
+                  <div className={`rounded-xl p-3 border-2 ${result.checklist.allowTrade ? "bg-green-950 border-green-700" : "bg-red-950 border-red-700"}`}>
+                    <div className="text-xs font-bold text-gray-300 mb-2">✅ {t("CHECKLIST GIAO DỊCH", "TRADE CHECKLIST")}</div>
+                    <div className="space-y-1">
+                      {[["Trend", result.checklist.trendOK], ["Volume", result.checklist.volumeOK], ["VIX", result.checklist.vixOK], ["Fear & Greed", result.checklist.fearGreedOK], ["MACD", result.checklist.macdOK], ["RSI", result.checklist.rsiOK]].map(([label, ok], i) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-xs text-gray-300">{label as string}</span>
+                          <span className={`text-xs font-bold ${ok ? "text-green-400" : "text-red-400"}`}>{ok ? "✓" : "✗"}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className={`mt-2 text-center text-xs font-bold py-1 rounded ${result.checklist.allowTrade ? "bg-green-700 text-white" : "bg-red-800 text-red-200"}`}>
+                      {result.checklist.allowTrade ? t("✅ CHO PHÉP GIAO DỊCH", "✅ TRADE ALLOWED") : t("❌ CHƯA ĐỦ ĐIỀU KIỆN", "❌ NOT READY")}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* News Score + Options Score */}
+            {(result.newsScore != null || result.optionsScore) && (
+              <div className="grid grid-cols-2 gap-3">
+                {result.newsScore != null && (
+                  <div className={`rounded-xl p-3 border ${result.newsScore > 20 ? "bg-green-950 border-green-800" : result.newsScore < -20 ? "bg-red-950 border-red-800" : "bg-gray-900 border-gray-700"}`}>
+                    <div className="text-xs font-bold text-gray-300 mb-2">📰 {t("ĐIỂM TIN TỨC", "NEWS SCORE")}</div>
+                    <div className={`text-2xl font-bold mb-1 ${result.newsScore > 20 ? "text-green-400" : result.newsScore < -20 ? "text-red-400" : "text-yellow-400"}`}>
+                      {result.newsScore > 0 ? "+" : ""}{result.newsScore}
+                    </div>
+                    <div className={`text-xs font-medium ${result.newsScore > 20 ? "text-green-300" : result.newsScore < -20 ? "text-red-300" : "text-yellow-300"}`}>{result.newsScoreLabel}</div>
+                  </div>
+                )}
+                {result.optionsScore && (
+                  <div className={`rounded-xl p-3 border ${result.optionsScore.sellPutScore >= 70 ? "bg-green-950 border-green-800" : "bg-gray-900 border-gray-700"}`}>
+                    <div className="text-xs font-bold text-gray-300 mb-2">⚡ {t("OPTIONS SCORE — SELL PUT", "OPTIONS SCORE")}</div>
+                    <div className={`text-2xl font-bold mb-2 ${result.optionsScore.sellPutScore >= 70 ? "text-green-400" : result.optionsScore.sellPutScore >= 50 ? "text-yellow-400" : "text-red-400"}`}>
+                      {result.optionsScore.sellPutScore}/100
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      {[[t("Xác suất OTM", "Prob OTM"), result.optionsScore.probabilityOTM + "%"], [t("Risk/Reward", "R/R"), result.optionsScore.riskReward], [t("Strike", "Strike"), result.optionsScore.recommendedStrike], [t("Thời hạn", "Expiry"), result.optionsScore.recommendedExpiry], [t("Rủi ro tối đa", "Max Risk"), result.optionsScore.maxRisk]].map(([k, v], i) => (
+                        <div key={i} className="flex justify-between">
+                          <span className="text-gray-400">{k}</span>
+                          <span className="text-white font-medium">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* GROQ AI — Verdict cuối cùng */}
             {(result.groqSummary || result.groqAdvice || result.groqRisk) && (
               <div className="bg-gradient-to-r from-purple-950 to-blue-950 rounded-xl p-4 border border-purple-700">
