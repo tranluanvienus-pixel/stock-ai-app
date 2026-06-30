@@ -95,7 +95,7 @@ export async function POST(req: Request) {
     if (targetSymbol) {
       const news = await getQuickNews(targetSymbol);
       if (news.length > 0) {
-        liveDataText += `\n\nTIN TỨC MỚI NHẤT VỀ ${targetSymbol}:\n${news.map(n => `- ${n}`).join("\n")}\n`;
+        liveDataText += `\n\nTIN TỨC MỚI NHẤT VỀ ${targetSymbol}:\n${news.map((n: string) => `- ${n}`).join("\n")}\n`;
       }
     }
   }
