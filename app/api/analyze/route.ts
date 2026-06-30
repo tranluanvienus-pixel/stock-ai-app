@@ -2,7 +2,12 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 
+// Hỗ trợ tối đa 2 key Groq — khi key chính bị rate limit (429), tự động thử key dự phòng.
+// Thêm GROQ_API_KEY_2 vào Environment Variables trên Vercel để kích hoạt fallback.
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+const GROQ_API_KEY_2 = process.env.GROQ_API_KEY_2 || "";
+const GROQ_KEYS = [GROQ_API_KEY, GROQ_API_KEY_2].filter(Boolean);
+
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
 const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
 
@@ -17,6 +22,36 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+// Gọi Groq với tự động fallback: nếu key đầu tiên bị rate limit (429), thử key tiếp theo.
+// Trả về Response thành công đầu tiên, hoặc Response lỗi cuối cùng nếu tất cả key đều fail.
+async function callGroq(body: object, timeoutMs: number): Promise<{ res: Response | null; usedKeyIndex: number; lastError: string | null }> {
+  if (GROQ_KEYS.length === 0) return { res: null, usedKeyIndex: -1, lastError: "Không có GROQ_API_KEY nào được cấu hình" };
+
+  let lastError: string | null = null;
+  for (let i = 0; i < GROQ_KEYS.length; i++) {
+    try {
+      const res = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_KEYS[i]}` },
+        body: JSON.stringify(body),
+      }, timeoutMs);
+
+      if (res.status === 429) {
+        const errBody = await res.text().catch(() => "");
+        lastError = `Key #${i + 1} rate limited (429): ${errBody.slice(0, 200)}`;
+        console.error("[callGroq]", lastError, "— thử key tiếp theo nếu còn");
+        continue; // Thử key kế tiếp
+      }
+      return { res, usedKeyIndex: i, lastError: null };
+    } catch (e: any) {
+      lastError = `Key #${i + 1} lỗi: ${e?.name || ""} ${e?.message || String(e)}`;
+      console.error("[callGroq]", lastError);
+      continue;
+    }
+  }
+  return { res: null, usedKeyIndex: -1, lastError: lastError || "Tất cả Groq key đều thất bại" };
 }
 
 // ─── DATA FETCHERS ────────────────────────────────────────────────────────────
@@ -426,7 +461,7 @@ async function analyzeWithGroq(params: {
   newsScore: number; newsScoreLabel: string;
   optionsScore: { sellPutScore: number; probabilityOTM: number; riskReward: string; recommendedStrike: string; recommendedExpiry: string; maxRisk: string };
 } | null> {
-  if (!GROQ_API_KEY) return null;
+  if (GROQ_KEYS.length === 0) return null;
 
   const newsText = (params.news || []).slice(0, 4).map(n => `[${n.sentiment.toUpperCase()}] ${n.title}`).join("\n");
   const topSectorText = (params.topSectors || []).slice(0, 5).map(s => `${s.nameVi}: ${s.perf5d > 0 ? "+" : ""}${s.perf5d.toFixed(1)}% (${s.flowSignal})`).join(", ");
@@ -504,20 +539,22 @@ Trả lời JSON thuần túy với TẤT CẢ các trường sau:
 }`;
 
   try {
-    const res = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: "Chuyên gia chứng khoán. Chỉ trả lời JSON thuần túy, không markdown." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.2,
-        max_tokens: 1200, // Đủ cho schema JSON nhiều field, nhưng không quá cao để tránh Groq trả lời chậm gây timeout trên Vercel Hobby
-        response_format: { type: "json_object" }, // Ép Groq luôn trả JSON hợp lệ
-      }),
+    const { res, lastError } = await callGroq({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: "Chuyên gia chứng khoán. Chỉ trả lời JSON thuần túy, không markdown." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.2,
+      max_tokens: 1200, // Đủ cho schema JSON nhiều field, nhưng không quá cao để tránh Groq trả lời chậm gây timeout trên Vercel Hobby
+      response_format: { type: "json_object" }, // Ép Groq luôn trả JSON hợp lệ
     }, 12000);
+
+    if (!res) {
+      lastGroqDebugError = lastError || "Không có Groq key nào khả dụng";
+      console.error("[analyzeWithGroq]", lastGroqDebugError);
+      return null;
+    }
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
       lastGroqDebugError = `Groq API lỗi: status=${res.status} body=${errBody.slice(0, 300)}`;
@@ -778,22 +815,18 @@ export async function POST(req: Request) {
   // Dịch tin tức + phân tích tổng hợp — chạy SONG SONG (không phụ thuộc nhau)
   // để giảm tổng thời gian xử lý, tránh vượt giới hạn timeout của Vercel Hobby plan (~10-60s)
   const translateNewsPromise = (async () => {
-    if (!GROQ_API_KEY || news.length === 0) return;
+    if (GROQ_KEYS.length === 0 || news.length === 0) return;
     try {
       const titles = news.map((n: any) => n.title).join("\n");
-      const transRes = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: "Dịch tiêu đề tin tức chứng khoán Anh→Việt. Trả về JSON array, không markdown." },
-            { role: "user", content: `Dịch:\n${titles}\nTrả về: ["dịch 1","dịch 2",...]` }
-          ],
-          temperature: 0.1, max_tokens: 400,
-        }),
+      const { res: transRes } = await callGroq({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: "Dịch tiêu đề tin tức chứng khoán Anh→Việt. Trả về JSON array, không markdown." },
+          { role: "user", content: `Dịch:\n${titles}\nTrả về: ["dịch 1","dịch 2",...]` }
+        ],
+        temperature: 0.1, max_tokens: 400,
       }, 8000);
-      if (transRes.ok) {
+      if (transRes?.ok) {
         const transJson = await transRes.json();
         const transText = (transJson.choices?.[0]?.message?.content || "").replace(/```json\n?/g,"").replace(/```\n?/g,"").trim();
         const translations = JSON.parse(transText);
