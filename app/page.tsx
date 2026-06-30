@@ -23,34 +23,8 @@ export default function Home() {
   const [marketOverview, setMarketOverview] = useState<any>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
-  // AI Chat
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
 
   const t = (vi: string, en: string) => lang === "vi" ? vi : en;
-
-  const sendChatMessage = async () => {
-    const msg = chatInput.trim();
-    if (!msg || chatLoading) return;
-    setChatInput("");
-    const newMessages = [...chatMessages, { role: "user", content: msg }];
-    setChatMessages(newMessages);
-    setChatLoading(true);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, context: result, history: newMessages }),
-      });
-      const data = await res.json();
-      setChatMessages([...newMessages, { role: "assistant", content: data.reply || "Lỗi: không có phản hồi" }]);
-    } catch {
-      setChatMessages([...newMessages, { role: "assistant", content: t("Lỗi kết nối, thử lại sau.", "Connection error, try again.") }]);
-    }
-    setChatLoading(false);
-  };
 
   const loadWatchlist = useCallback(async (syms: string[]) => {
     if (!syms.length) return;
@@ -1073,80 +1047,6 @@ export default function Home() {
           </div>
         )}
       </div>
-
-      {/* AI Chat — Floating button */}
-      <button onClick={() => setChatOpen(!chatOpen)}
-        className="fixed bottom-5 right-5 bg-blue-600 hover:bg-blue-500 text-white rounded-full w-14 h-14 shadow-lg flex items-center justify-center text-2xl z-50 transition-transform hover:scale-105">
-        {chatOpen ? "✕" : "🤖"}
-      </button>
-
-      {/* AI Chat — Panel */}
-      {chatOpen && (
-        <div className="fixed bottom-24 right-5 w-[90vw] max-w-sm h-[60vh] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden">
-          <div className="bg-blue-700 px-4 py-3 flex items-center justify-between">
-            <div>
-              <div className="text-sm font-bold text-white">🤖 {t("Trợ lý AI Chứng khoán", "AI Stock Assistant")}</div>
-              {result && (
-                <div className="text-xs text-blue-200">{t("Đang xem", "Viewing")}: {result.symbol}</div>
-              )}
-            </div>
-            <button onClick={() => setChatMessages([])} className="text-xs text-blue-200 hover:text-white">
-              🗑️ {t("Xóa", "Clear")}
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {chatMessages.length === 0 && (
-              <div className="text-xs text-gray-500 text-center py-6">
-                {result
-                  ? t(`Hỏi tôi bất cứ điều gì về ${result.symbol} hoặc thị trường chung!`, `Ask me anything about ${result.symbol} or the market!`)
-                  : t("Hỏi tôi về chứng khoán, sell put, swing trade...", "Ask me about stocks, sell put, swing trade...")}
-                <div className="mt-3 space-y-1.5">
-                  {[
-                    t("Mã này có nên Sell Put không?", "Should I Sell Put this?"),
-                    t("Tại sao VIX tăng ảnh hưởng gì?", "Why does VIX rising matter?"),
-                    t("Giải thích chỉ báo RSI", "Explain RSI indicator"),
-                  ].map((q, i) => (
-                    <button key={i} onClick={() => setChatInput(q)}
-                      className="block w-full text-left bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300">
-                      💬 {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {chatMessages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
-                  m.role === "user" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-200"}`}>
-                  {m.content}
-                </div>
-              </div>
-            ))}
-            {chatLoading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400">
-                  {t("Đang suy nghĩ...", "Thinking...")} 🤔
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 border-t border-gray-800 flex gap-2">
-            <input
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              placeholder={t("Hỏi AI...", "Ask AI...")}
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && sendChatMessage()}
-            />
-            <button onClick={sendChatMessage} disabled={chatLoading}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-xs font-medium">
-              {t("Gửi", "Send")}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
