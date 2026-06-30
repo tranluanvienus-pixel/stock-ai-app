@@ -2,21 +2,67 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 
+// Hỗ trợ tối đa 2 key Groq — khi key chính bị rate limit (429), tự động thử key dự phòng.
+// Đồng bộ với app/api/analyze/route.ts — thêm GROQ_API_KEY_2 vào Environment Variables để kích hoạt.
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+const GROQ_API_KEY_2 = process.env.GROQ_API_KEY_2 || "";
+const GROQ_KEYS = [GROQ_API_KEY, GROQ_API_KEY_2].filter(Boolean);
+
 const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
+
+// Fetch có timeout chủ động — tránh 1 API bên ngoài bị treo lâu kéo theo
+// toàn bộ request bị Vercel Hobby kill (giới hạn ngắn hơn nhiều so với maxDuration khai báo)
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 6000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// Gọi Groq với tự động fallback: nếu key đầu tiên bị rate limit (429), thử key tiếp theo.
+async function callGroq(body: object, timeoutMs: number): Promise<{ res: Response | null; usedKeyIndex: number; lastError: string | null }> {
+  if (GROQ_KEYS.length === 0) return { res: null, usedKeyIndex: -1, lastError: "Không có GROQ_API_KEY nào được cấu hình" };
+
+  let lastError: string | null = null;
+  for (let i = 0; i < GROQ_KEYS.length; i++) {
+    try {
+      const res = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_KEYS[i]}` },
+        body: JSON.stringify(body),
+      }, timeoutMs);
+
+      if (res.status === 429) {
+        const errBody = await res.text().catch(() => "");
+        lastError = `Key #${i + 1} rate limited (429): ${errBody.slice(0, 200)}`;
+        console.error("[callGroq market]", lastError, "— thử key tiếp theo nếu còn");
+        continue;
+      }
+      return { res, usedKeyIndex: i, lastError: null };
+    } catch (e: any) {
+      lastError = `Key #${i + 1} lỗi: ${e?.name || ""} ${e?.message || String(e)}`;
+      console.error("[callGroq market]", lastError);
+      continue;
+    }
+  }
+  return { res: null, usedKeyIndex: -1, lastError: lastError || "Tất cả Groq key đều thất bại" };
+}
 
 // Yahoo v7 quote — lấy giá regular + after-hours/pre-market chính xác
 async function getIndexPrice(symbol: string) {
   try {
-    // Dùng v7 quote để lấy đầy đủ after-hours
     const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,postMarketPrice,postMarketChange,postMarketChangePercent,preMarketPrice,preMarketChange,preMarketChangePercent,marketState,regularMarketPreviousClose`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "application/json",
         "Referer": "https://finance.yahoo.com",
       }
-    });
+    }, 7000);
     if (!res.ok) throw new Error("v7 failed");
     const json = await res.json();
     const q = json?.quoteResponse?.result?.[0];
@@ -59,10 +105,9 @@ async function getIndexPrice(symbol: string) {
       marketState,
     };
   } catch {
-    // Fallback về v8
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const res = await fetchWithTimeout(url, { headers: { "User-Agent": "Mozilla/5.0" } }, 7000);
       const json = await res.json();
       const result = json?.chart?.result?.[0];
       if (!result) return null;
@@ -80,8 +125,9 @@ async function getIndexPrice(symbol: string) {
 async function getMarketNews() {
   if (!POLYGON_KEY) return [];
   try {
-    const res = await fetch(
-      `https://api.polygon.io/v2/reference/news?limit=12&order=desc&apiKey=${POLYGON_KEY}`
+    const res = await fetchWithTimeout(
+      `https://api.polygon.io/v2/reference/news?limit=12&order=desc&apiKey=${POLYGON_KEY}`,
+      {}, 6000
     );
     if (!res.ok) return [];
     const json = await res.json();
@@ -108,9 +154,9 @@ async function getMarketNews() {
 // VIX
 async function getVIX() {
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=5d`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+      { headers: { "User-Agent": "Mozilla/5.0" } }, 6000
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -125,13 +171,13 @@ async function getVIX() {
 // Fear & Greed
 async function getFearGreed() {
   try {
-    const res = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
+    const res = await fetchWithTimeout("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
       headers: {
         "User-Agent": "Mozilla/5.0",
         "Referer": "https://edition.cnn.com/markets/fear-and-greed",
         "Origin": "https://edition.cnn.com",
       }
-    });
+    }, 6000);
     if (res.ok) {
       const json = await res.json();
       const score = Math.round(json?.fear_and_greed?.score || 0);
@@ -141,7 +187,7 @@ async function getFearGreed() {
   return null;
 }
 
-// Groq AI
+// Groq AI — dùng callGroq có fallback
 async function getMarketAnalysis(params: {
   spy: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null; afterHoursLabel: string } | null;
   qqq: { effectivePrice: number; effectiveChangePct: number; afterHoursPrice: number | null } | null;
@@ -151,7 +197,7 @@ async function getMarketAnalysis(params: {
   fearGreed: number | null;
   news: { title: string; sentiment: string }[];
 }) {
-  if (!GROQ_API_KEY) return null;
+  if (GROQ_KEYS.length === 0) return null;
 
   const positiveNews = params.news.filter(n => n.sentiment === "positive").slice(0, 3).map(n => `✅ ${n.title}`).join("\n");
   const negativeNews = params.news.filter(n => n.sentiment === "negative").slice(0, 3).map(n => `❌ ${n.title}`).join("\n");
@@ -180,23 +226,30 @@ Trả lời JSON thuần túy:
 {"whyMoving":"Lý do thị trường ${marketDir} — 2-3 câu tiếng Việt","tomorrowForecast":"TĂNG hoặc GIẢM hoặc SIDEWAYS","tomorrowReason":"Lý do dự báo ngày mai — 2-3 câu tiếng Việt","tomorrowConfidence":"Cao hoặc Trung bình hoặc Thấp","risks":"Rủi ro chính — 1-2 câu tiếng Việt","advice":"Lời khuyên trader — 1-2 câu tiếng Việt","sentiment":"bullish hoặc bearish hoặc neutral","keyLevels":"Hỗ trợ và kháng cự SPY thực tế gần $${spyPrice.toFixed(2)}"}`;
 
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: "Chuyên gia thị trường chứng khoán Mỹ. Chỉ trả lời JSON thuần túy." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.2, max_tokens: 500,
-      }),
-    });
-    if (!res.ok) return null;
+    const { res, lastError } = await callGroq({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: "Chuyên gia thị trường chứng khoán Mỹ. Chỉ trả lời JSON thuần túy." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.2, max_tokens: 500,
+    }, 10000);
+
+    if (!res) {
+      console.error("[getMarketAnalysis]", lastError);
+      return null;
+    }
+    if (!res.ok) {
+      console.error("[getMarketAnalysis] Groq lỗi:", res.status);
+      return null;
+    }
     const json = await res.json();
     const text = (json.choices?.[0]?.message?.content || "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     return JSON.parse(text);
-  } catch { return null; }
+  } catch (e) {
+    console.error("[getMarketAnalysis] Lỗi không xác định:", e);
+    return null;
+  }
 }
 
 export async function GET() {

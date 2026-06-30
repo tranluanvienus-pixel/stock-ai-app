@@ -11,12 +11,26 @@ const WATCHLIST = [
 
 const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
 
+// Fetch có timeout chủ động — đồng bộ với app/api/analyze/route.ts
+// tránh 1 API bên ngoài bị treo lâu kéo theo toàn bộ request bị Vercel Hobby kill
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 6000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // Polygon real-time price — đồng bộ với analyze
 async function getPolygonPrice(symbol: string): Promise<number | null> {
   if (!POLYGON_KEY) return null;
   try {
-    const res = await fetch(
-      `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${POLYGON_KEY}`
+    const res = await fetchWithTimeout(
+      `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${POLYGON_KEY}`,
+      {}, 5000
     );
     if (!res.ok) return null;
     const json = await res.json();
@@ -28,7 +42,7 @@ async function getPolygonPrice(symbol: string): Promise<number | null> {
 
 async function getStockData(symbol: string) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`;
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": "Mozilla/5.0" } }, 7000);
   return res.json();
 }
 
@@ -154,7 +168,6 @@ async function analyzeStock(symbol: string) {
     const lows: number[] = quote.low.filter((p: number) => p != null);
     const volumes: number[] = quote.volume.filter((v: number) => v != null);
 
-    // Dùng Polygon price nếu có, fallback Yahoo — đồng bộ với analyze
     const currentPrice: number = polygonPrice || result.meta.regularMarketPrice;
 
     if (closes.length < 50 || !currentPrice) return null;
@@ -177,7 +190,6 @@ async function analyzeStock(symbol: string) {
     const volRatio = volumes[volumes.length - 1] / avgVol;
     const perf5d = ((closes[closes.length-1] - closes[closes.length-6]) / closes[closes.length-6]) * 100;
 
-    // ── SCORING ĐỒNG BỘ HOÀN TOÀN VỚI analyze/route.ts ──
     let score = 50;
 
     if (rsi < 30) score += 15;
