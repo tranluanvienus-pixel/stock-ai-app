@@ -355,6 +355,11 @@ async function analyzeWithGroq(params: {
   groqSummary: string; groqAdvice: string; groqRisk: string;
   sellPutAI: string; sellCallAI: string;
   sectorRotationAdvice: string;
+  marketRegime: string; marketRegimeVi: string; marketRegimeStrategy: string;
+  probUp: number; probSideways: number; probDown: number;
+  checklist: { trendOK: boolean; volumeOK: boolean; vixOK: boolean; fearGreedOK: boolean; macdOK: boolean; rsiOK: boolean; allowTrade: boolean };
+  newsScore: number; newsScoreLabel: string;
+  optionsScore: { sellPutScore: number; probabilityOTM: number; riskReward: string; recommendedStrike: string; recommendedExpiry: string; maxRisk: string };
 } | null> {
   if (!GROQ_API_KEY) return null;
 
