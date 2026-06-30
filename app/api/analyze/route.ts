@@ -646,9 +646,16 @@ export async function POST(req: Request) {
   const meta: any = result.meta || {};
 
   const yahooPrice: number | null = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : null;
+
+  // prevClose ưu tiên lấy từ mảng giá đóng cửa lịch sử thực tế (closes[length-2]) thay vì
+  // field meta.chartPreviousClose/previousClose của Yahoo — với các mã biến động mạnh, field
+  // meta đôi khi trỏ về mốc xa hơn phiên liền trước, gây ra % thay đổi sai lệch rất lớn (vd +227%).
+  const closesPrevClose: number | null =
+    closes.length >= 2 && typeof closes[closes.length - 2] === "number" ? closes[closes.length - 2] : null;
   const yahooPrevClose: number | null =
-    typeof meta.chartPreviousClose === "number" ? meta.chartPreviousClose
-    : (typeof meta.previousClose === "number" ? meta.previousClose : null);
+    closesPrevClose ??
+    (typeof meta.chartPreviousClose === "number" ? meta.chartPreviousClose
+    : (typeof meta.previousClose === "number" ? meta.previousClose : null));
 
   const currentPrice: number =
     yahooPrice ?? (typeof aq?.price === "number" && aq.price > 0 ? aq.price : 0);
