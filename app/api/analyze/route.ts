@@ -392,6 +392,10 @@ function calcSectorStrength(closes: number[]) {
   };
 }
 
+// Biến debug tạm — lưu lỗi gần nhất từ Groq để trả ra response, giúp chẩn đoán
+// mà không cần phụ thuộc Vercel Runtime Logs (vốn có độ trễ/giới hạn trên Hobby plan)
+let lastGroqDebugError: string | null = null;
+
 // ─── GROQ AI ──────────────────────────────────────────────────────────────────
 async function analyzeWithGroq(params: {
   symbol: string; companyName: string; sector: string; industry: string;
@@ -515,12 +519,15 @@ Trả lời JSON thuần túy với TẤT CẢ các trường sau:
       }),
     }, 12000);
     if (!res.ok) {
-      console.error("[analyzeWithGroq] Groq API lỗi:", res.status, await res.text().catch(() => ""));
+      const errBody = await res.text().catch(() => "");
+      lastGroqDebugError = `Groq API lỗi: status=${res.status} body=${errBody.slice(0, 300)}`;
+      console.error("[analyzeWithGroq]", lastGroqDebugError);
       return null;
     }
     const json = await res.json();
     if (json.choices?.[0]?.finish_reason === "length") {
-      console.error("[analyzeWithGroq] Response bị cắt cụt do vượt max_tokens");
+      lastGroqDebugError = "Response bị cắt cụt do vượt max_tokens";
+      console.error("[analyzeWithGroq]", lastGroqDebugError);
     }
     let text = (json.choices?.[0]?.message?.content || "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const firstBrace = text.indexOf("{");
@@ -529,13 +536,16 @@ Trả lời JSON thuần túy với TẤT CẢ các trường sau:
       text = text.slice(firstBrace, lastBrace + 1);
     }
     try {
+      lastGroqDebugError = null; // reset khi thành công
       return JSON.parse(text);
-    } catch {
-      console.error("[analyzeWithGroq] JSON.parse thất bại. Raw text (500 ký tự đầu):", text.slice(0, 500));
+    } catch (parseErr: any) {
+      lastGroqDebugError = `JSON.parse thất bại: ${parseErr?.message || ""} | Raw text (300 ký tự đầu): ${text.slice(0, 300)}`;
+      console.error("[analyzeWithGroq]", lastGroqDebugError);
       return null;
     }
-  } catch (e) {
-    console.error("[analyzeWithGroq] Lỗi không xác định:", e);
+  } catch (e: any) {
+    lastGroqDebugError = `Lỗi không xác định: ${e?.name || ""} ${e?.message || String(e)}`;
+    console.error("[analyzeWithGroq]", lastGroqDebugError);
     return null;
   }
 }
@@ -885,5 +895,6 @@ export async function POST(req: Request) {
     newsScore: groqResult?.newsScore || null,
     newsScoreLabel: groqResult?.newsScoreLabel || null,
     optionsScore: groqResult?.optionsScore || null,
+    _debugGroqError: groqResult ? null : lastGroqDebugError, // Tạm thời để chẩn đoán — xóa sau khi sửa xong
   });
 }
