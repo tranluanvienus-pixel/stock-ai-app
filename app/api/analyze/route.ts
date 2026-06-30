@@ -6,12 +6,25 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY || "";
 const POLYGON_KEY = process.env.POLYGON_API_KEY || "";
 
+// Fetch có timeout chủ động — tránh 1 API bên ngoài bị treo lâu kéo theo
+// toàn bộ request bị Vercel Hobby kill (giới hạn ngắn hơn nhiều so với maxDuration khai báo)
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 6000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ─── DATA FETCHERS ────────────────────────────────────────────────────────────
 
 // Yahoo v8 — lấy dữ liệu lịch sử (vẫn hoạt động trên Vercel)
 async function getStockData(symbol: string) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`;
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": "Mozilla/5.0" } }, 8000);
   return res.json();
 }
 
@@ -20,7 +33,7 @@ async function getStockData(symbol: string) {
 async function getAlphaQuote(symbol: string) {
   if (!POLYGON_KEY) return null;
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${POLYGON_KEY}`
     );
     if (!res.ok) return null;
@@ -58,7 +71,7 @@ async function getAlphaQuote(symbol: string) {
 async function getPolygonCompany(symbol: string) {
   if (!POLYGON_KEY) return null;
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.polygon.io/v3/reference/tickers/${symbol}?apiKey=${POLYGON_KEY}`
     );
     if (!res.ok) return null;
@@ -80,7 +93,7 @@ async function getPolygonCompany(symbol: string) {
 async function getAlphaVantageOverview(symbol: string) {
   if (!ALPHA_VANTAGE_KEY) return null;
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`
     );
     if (!res.ok) return null;
@@ -155,7 +168,7 @@ async function getAlphaCompany(symbol: string) {
 async function getAlphaNews(symbol: string) {
   if (!POLYGON_KEY) return [];
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.polygon.io/v2/reference/news?ticker=${symbol}&limit=8&order=desc&apiKey=${POLYGON_KEY}`
     );
     if (!res.ok) return [];
@@ -177,7 +190,7 @@ async function getAlphaNews(symbol: string) {
 // VIX real-time từ Yahoo v8 (vẫn hoạt động)
 async function getVIX() {
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=5d`,
       { headers: { "User-Agent": "Mozilla/5.0" } }
     );
@@ -194,7 +207,7 @@ async function getVIX() {
 // Fear & Greed — CNN + fallback
 async function getFearGreed() {
   try {
-    const res = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
+    const res = await fetchWithTimeout("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Referer": "https://edition.cnn.com/markets/fear-and-greed",
@@ -211,7 +224,7 @@ async function getFearGreed() {
   } catch {}
 
   try {
-    const res = await fetch("https://api.alternative.me/fng/?limit=1", {
+    const res = await fetchWithTimeout("https://api.alternative.me/fng/?limit=1", {
       headers: { "User-Agent": "Mozilla/5.0" }
     });
     if (res.ok) {
@@ -242,9 +255,10 @@ async function getSectorRotation() {
   const results = await Promise.allSettled(
     sectors.map(async (s) => {
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `https://query1.finance.yahoo.com/v8/finance/chart/${s.symbol}?interval=1d&range=1mo`,
-          { headers: { "User-Agent": "Mozilla/5.0" } }
+          { headers: { "User-Agent": "Mozilla/5.0" } },
+          5000
         );
         const json = await res.json();
         const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter((c: number) => c != null) || [];
@@ -486,7 +500,7 @@ Trả lời JSON thuần túy với TẤT CẢ các trường sau:
 }`;
 
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const res = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
       body: JSON.stringify({
@@ -496,10 +510,10 @@ Trả lời JSON thuần túy với TẤT CẢ các trường sau:
           { role: "user", content: prompt }
         ],
         temperature: 0.2,
-        max_tokens: 1800, // Tăng từ 800 — schema JSON nhiều field (marketRegime, checklist, optionsScore...) dễ bị cắt cụt nếu giới hạn thấp
+        max_tokens: 1200, // Đủ cho schema JSON nhiều field, nhưng không quá cao để tránh Groq trả lời chậm gây timeout trên Vercel Hobby
         response_format: { type: "json_object" }, // Ép Groq luôn trả JSON hợp lệ
       }),
-    });
+    }, 12000);
     if (!res.ok) {
       console.error("[analyzeWithGroq] Groq API lỗi:", res.status, await res.text().catch(() => ""));
       return null;
@@ -751,11 +765,13 @@ export async function POST(req: Request) {
   const target3 = (currentPrice * 1.15).toFixed(2);
   const targetLong = (currentPrice * 1.30).toFixed(2);
 
-  // Dịch tin tức bằng Groq
-  if (GROQ_API_KEY && news.length > 0) {
+  // Dịch tin tức + phân tích tổng hợp — chạy SONG SONG (không phụ thuộc nhau)
+  // để giảm tổng thời gian xử lý, tránh vượt giới hạn timeout của Vercel Hobby plan (~10-60s)
+  const translateNewsPromise = (async () => {
+    if (!GROQ_API_KEY || news.length === 0) return;
     try {
       const titles = news.map((n: any) => n.title).join("\n");
-      const transRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const transRes = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
         body: JSON.stringify({
@@ -766,7 +782,7 @@ export async function POST(req: Request) {
           ],
           temperature: 0.1, max_tokens: 400,
         }),
-      });
+      }, 8000);
       if (transRes.ok) {
         const transJson = await transRes.json();
         const transText = (transJson.choices?.[0]?.message?.content || "").replace(/```json\n?/g,"").replace(/```\n?/g,"").trim();
@@ -776,10 +792,9 @@ export async function POST(req: Request) {
         }
       }
     } catch {}
-  }
+  })();
 
-  // Groq AI phân tích tổng hợp
-  const groqResult = await analyzeWithGroq({
+  const groqAnalysisPromise = analyzeWithGroq({
     symbol, companyName, sector, industry,
     price: currentPrice,
     peRatio, revenueGrowth, profitMargin, marketCap,
@@ -791,6 +806,8 @@ export async function POST(req: Request) {
     news: news.slice(0, 4),
     reasons_buy, reasons_avoid,
   }).catch(() => null);
+
+  const [, groqResult] = await Promise.all([translateNewsPromise, groqAnalysisPromise]);
 
   const finalVerdict = groqResult?.finalVerdict || verdict;
   const finalVerdictVi = groqResult?.finalVerdictVi || verdictVi;
