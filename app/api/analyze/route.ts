@@ -15,11 +15,11 @@ async function getStockData(symbol: string) {
   return res.json();
 }
 
-// Polygon.io — giá real-time + after-hours (không bị block, không giới hạn ngày)
+// Polygon.io FREE — chỉ có dữ liệu cuối ngày (EOD), KHÔNG có lastTrade/fmv/minute bar real-time.
+// Dùng làm nguồn phụ cho prevClose chính xác; giá "hiện tại" ưu tiên lấy từ Yahoo (xem getStockData).
 async function getAlphaQuote(symbol: string) {
   if (!POLYGON_KEY) return null;
   try {
-    // Lấy snapshot real-time
     const res = await fetch(
       `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${POLYGON_KEY}`
     );
@@ -30,38 +30,31 @@ async function getAlphaQuote(symbol: string) {
 
     const day = t.day || {};
     const prevDay = t.prevDay || {};
-    const lastQuote = t.lastQuote || {};
-    const lastTrade = t.lastTrade || {};
 
-    const price = lastTrade.p || day.c || 0;
-    const prevClose = prevDay.c || 0;
-    const change = prevClose ? price - prevClose : 0;
-    const changePct = prevClose ? (change / prevClose) * 100 : 0;
+    // Free tier: "day" cũng thường là dữ liệu của phiên gần nhất đã đóng (không phải phiên đang chạy).
+    // Dùng "!= null" thay vì "||" vì giá có thể hợp lệ bằng 0 trong vài trường hợp edge-case dữ liệu lỗi
+    // (dù hiếm, tránh để "||" nuốt nhầm giá trị 0 hợp lệ thành fallback sai).
+    const price: number = typeof day.c === "number" && day.c > 0 ? day.c : (typeof prevDay.c === "number" ? prevDay.c : 0);
+    const prevClose: number = typeof prevDay.c === "number" ? prevDay.c : 0;
+    const change: number =
+      typeof t.todaysChange === "number" ? t.todaysChange : (prevClose ? price - prevClose : 0);
+    const changePct: number =
+      typeof t.todaysChangePerc === "number" ? t.todaysChangePerc : (prevClose ? (change / prevClose) * 100 : 0);
 
-    // After-hours / pre-market từ extended hours
-    let afterHoursPrice: number | undefined;
-    let afterHoursPct: number | undefined;
-    let afterHoursLabel = "";
-
-    // Polygon trả về extended hours trong lastQuote hoặc fmv
-    const fmv = t.fmv; // fair market value (after-hours)
-    if (fmv && Math.abs(fmv - price) > 0.01) {
-      afterHoursPrice = fmv;
-      afterHoursPct = ((fmv - price) / price) * 100;
-      afterHoursLabel = "After-hours";
-    }
-
+    // Free tier KHÔNG có fmv/lastTrade nên không thể xác định after-hours từ Polygon.
+    // Trả về undefined để route chính dùng Yahoo Finance (postMarketPrice) thay thế — xem getStockData.
     return {
       price,
       change,
       changePct,
-      high: day.h || 0,
-      low: day.l || 0,
-      volume: day.v || 0,
+      high: typeof day.h === "number" ? day.h : 0,
+      low: typeof day.l === "number" ? day.l : 0,
+      volume: typeof day.v === "number" ? day.v : 0,
       prevClose,
-      afterHoursPrice,
-      afterHoursPct,
-      afterHoursLabel,
+      afterHoursPrice: undefined,
+      afterHoursPct: undefined,
+      afterHoursLabel: "",
+      isEODOnly: true, // đánh dấu để route biết đây là giá cuối ngày, không phải real-time
     };
   } catch { return null; }
 }
@@ -507,14 +500,39 @@ Trả lời JSON thuần túy với TẤT CẢ các trường sau:
           { role: "system", content: "Chuyên gia chứng khoán. Chỉ trả lời JSON thuần túy, không markdown." },
           { role: "user", content: prompt }
         ],
-        temperature: 0.2, max_tokens: 800,
+        temperature: 0.2,
+        max_tokens: 1800, // Tăng từ 800 — schema JSON hiện có nhiều field (marketRegime, checklist, optionsScore...) dễ bị cắt cụt giữa chừng nếu giới hạn thấp
+        response_format: { type: "json_object" }, // Ép Groq trả JSON hợp lệ, tránh bị thêm text giải thích thừa làm hỏng JSON.parse
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("[analyzeWithGroq] Groq API trả lỗi:", res.status, await res.text().catch(() => ""));
+      return null;
+    }
     const json = await res.json();
-    const text = (json.choices?.[0]?.message?.content || "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(text);
-  } catch { return null; }
+    const finishReason = json.choices?.[0]?.finish_reason;
+    if (finishReason === "length") {
+      console.error("[analyzeWithGroq] Response bị cắt cụt do vượt max_tokens — tăng thêm max_tokens nếu vẫn còn lỗi này");
+    }
+    let text = (json.choices?.[0]?.message?.content || "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    // Phòng trường hợp model vẫn chèn text thừa trước/sau JSON dù đã ép response_format
+    const firstBrace = text.indexOf("{");
+    const lastBrace = text.lastIndexOf("}");
+    if (firstBrace > 0 || (lastBrace !== -1 && lastBrace < text.length - 1)) {
+      text = text.slice(firstBrace, lastBrace + 1);
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch (parseErr) {
+      console.error("[analyzeWithGroq] JSON.parse thất bại. Raw text (500 ký tự đầu):", text.slice(0, 500));
+      return null;
+    }
+  } catch (e) {
+    console.error("[analyzeWithGroq] Lỗi không xác định khi gọi Groq:", e);
+    return null;
+  }
 }
 
 // ─── WATCHLIST + SECTORS ENDPOINT ────────────────────────────────────────────
@@ -570,16 +588,38 @@ export async function POST(req: Request) {
   const lows: number[] = quote.low.filter((p: number) => p != null);
   const volumes: number[] = quote.volume.filter((v: number) => v != null);
 
-  // Giá từ Polygon.io, fallback Yahoo v8
+  // ── Nguồn giá: Yahoo v8 (miễn phí, không giới hạn key, cập nhật trong phiên) làm chính.
+  // Polygon free chỉ có dữ liệu EOD (xem getAlphaQuote) nên chỉ dùng làm fallback khi Yahoo lỗi.
   const aq = alphaQuote.status === "fulfilled" ? alphaQuote.value : null;
-  const currentPrice: number = (aq?.price as number) || result.meta.regularMarketPrice;
-  const priceChange: number = (aq?.change as number) || 0;
-  const priceChangePct: number = (aq?.changePct as number) || 0;
+  const meta = result.meta || {};
 
-  // After-hours từ Polygon
-  const afterHoursPrice: number | null = (aq?.afterHoursPrice as number) || null;
-  const afterHoursPct: number | null = (aq?.afterHoursPct as number) || null;
-  const afterHoursLabel: string = (aq?.afterHoursLabel as string) || "";
+  const yahooPrice: number | null = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : null;
+  const yahooPrevClose: number | null = typeof meta.chartPreviousClose === "number" ? meta.chartPreviousClose
+    : (typeof meta.previousClose === "number" ? meta.previousClose : null);
+
+  const currentPrice: number =
+    yahooPrice ?? (typeof aq?.price === "number" && aq.price > 0 ? aq.price : 0);
+  const prevCloseForChange: number =
+    yahooPrevClose ?? (typeof aq?.prevClose === "number" ? aq.prevClose : 0);
+
+  const priceChange: number = prevCloseForChange ? currentPrice - prevCloseForChange : 0;
+  const priceChangePct: number = prevCloseForChange ? (priceChange / prevCloseForChange) * 100 : 0;
+
+  // After-hours / pre-market THẬT từ Yahoo (miễn phí) — Polygon free không hỗ trợ field này
+  const marketState: string | undefined = meta.marketState; // "PRE", "REGULAR", "POST", "CLOSED"
+  let afterHoursPrice: number | null = null;
+  let afterHoursPct: number | null = null;
+  let afterHoursLabel = "";
+
+  if (marketState === "POST" && typeof meta.postMarketPrice === "number" && currentPrice) {
+    afterHoursPrice = meta.postMarketPrice;
+    afterHoursPct = ((meta.postMarketPrice - currentPrice) / currentPrice) * 100;
+    afterHoursLabel = "After-hours";
+  } else if (marketState === "PRE" && typeof meta.preMarketPrice === "number" && currentPrice) {
+    afterHoursPrice = meta.preMarketPrice;
+    afterHoursPct = ((meta.preMarketPrice - currentPrice) / currentPrice) * 100;
+    afterHoursLabel = "Pre-market";
+  }
 
   if (closes.length < 50) return NextResponse.json({ error: "Not enough data" });
 
