@@ -66,8 +66,8 @@ async function getAlphaQuote(symbol: string) {
   } catch { return null; }
 }
 
-// Polygon.io — company details (thông tin công ty thật)
-async function getAlphaCompany(symbol: string) {
+// Polygon.io — company basic info (tên, mô tả, ngành)
+async function getPolygonCompany(symbol: string) {
   if (!POLYGON_KEY) return null;
   try {
     const res = await fetch(
@@ -80,28 +80,87 @@ async function getAlphaCompany(symbol: string) {
     return {
       name: d.name || symbol,
       sector: d.sic_description || "N/A",
-      industry: d.sic_description || "N/A",
       description: (d.description || "").slice(0, 600),
       marketCap: d.market_cap || null,
-      peRatio: null, // Polygon free không có P/E
-      forwardPE: null,
-      pbRatio: null,
-      eps: null,
-      beta: null,
-      dividendYield: null,
-      week52High: null,
-      week52Low: null,
-      targetPrice: null,
-      revenueGrowthYOY: null,
-      profitMargin: null,
-      revenuePerShare: null,
-      returnOnEquity: null,
-      debtToEquity: null,
-      analystRating: null,
       website: d.homepage_url || "",
       employees: d.total_employees || null,
     };
   } catch { return null; }
+}
+
+// Alpha Vantage — company fundamentals (P/E, ROE, Beta, D/E...)
+async function getAlphaVantageOverview(symbol: string) {
+  if (!ALPHA_VANTAGE_KEY) return null;
+  try {
+    const res = await fetch(
+      `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`
+    );
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!d?.Symbol || d.Note) return null; // Note = rate limit hit
+
+    const toNum = (v: any) => (v && v !== "None" && v !== "-") ? parseFloat(v) : null;
+
+    return {
+      sector: d.Sector || null,
+      industry: d.Industry || null,
+      peRatio: toNum(d.PERatio),
+      forwardPE: toNum(d.ForwardPE),
+      pbRatio: toNum(d.PriceToBookRatio),
+      eps: toNum(d.EPS),
+      beta: toNum(d.Beta),
+      dividendYield: toNum(d.DividendYield) ? toNum(d.DividendYield)! * 100 : null,
+      week52High: toNum(d["52WeekHigh"]),
+      week52Low: toNum(d["52WeekLow"]),
+      targetPrice: toNum(d.AnalystTargetPrice),
+      revenueGrowthYOY: toNum(d.QuarterlyRevenueGrowthYOY) ? toNum(d.QuarterlyRevenueGrowthYOY)! * 100 : null,
+      profitMargin: toNum(d.ProfitMargin) ? toNum(d.ProfitMargin)! * 100 : null,
+      revenuePerShare: toNum(d.RevenuePerShareTTM),
+      returnOnEquity: toNum(d.ReturnOnEquityTTM) ? toNum(d.ReturnOnEquityTTM)! * 100 : null,
+      debtToEquity: toNum(d.DebtToEquityRatio) || toNum(d.DebtToEquity) || null,
+      marketCap: toNum(d.MarketCapitalization),
+      analystRating: d.AnalystRatingBuy ? {
+        buy: parseInt(d.AnalystRatingBuy || "0"),
+        hold: parseInt(d.AnalystRatingHold || "0"),
+        sell: parseInt(d.AnalystRatingSell || "0"),
+      } : null,
+    };
+  } catch { return null; }
+}
+
+// Kết hợp Polygon (tên/mô tả) + Alpha Vantage (chỉ số tài chính)
+async function getAlphaCompany(symbol: string) {
+  const [polygonData, avData] = await Promise.all([
+    getPolygonCompany(symbol),
+    getAlphaVantageOverview(symbol),
+  ]);
+
+  if (!polygonData && !avData) return null;
+
+  return {
+    name: polygonData?.name || symbol,
+    sector: avData?.sector || polygonData?.sector || "N/A",
+    industry: avData?.industry || "N/A",
+    description: polygonData?.description || "",
+    marketCap: avData?.marketCap || polygonData?.marketCap || null,
+    peRatio: avData?.peRatio ?? null,
+    forwardPE: avData?.forwardPE ?? null,
+    pbRatio: avData?.pbRatio ?? null,
+    eps: avData?.eps ?? null,
+    beta: avData?.beta ?? null,
+    dividendYield: avData?.dividendYield ?? null,
+    week52High: avData?.week52High ?? null,
+    week52Low: avData?.week52Low ?? null,
+    targetPrice: avData?.targetPrice ?? null,
+    revenueGrowthYOY: avData?.revenueGrowthYOY ?? null,
+    profitMargin: avData?.profitMargin ?? null,
+    revenuePerShare: avData?.revenuePerShare ?? null,
+    returnOnEquity: avData?.returnOnEquity ?? null,
+    debtToEquity: avData?.debtToEquity ?? null,
+    analystRating: avData?.analystRating ?? null,
+    website: polygonData?.website || "",
+    employees: polygonData?.employees ?? null,
+  };
 }
 
 // Polygon.io — tin tức thật
@@ -524,25 +583,25 @@ export async function POST(req: Request) {
 
   if (closes.length < 50) return NextResponse.json({ error: "Not enough data" });
 
-  // Thông tin công ty từ Polygon
+  // Thông tin công ty từ Polygon + Alpha Vantage
   const co = alphaCompany.status === "fulfilled" ? alphaCompany.value : null;
   const companyName: string = co?.name || result.meta.longName || result.meta.shortName || symbol;
   const sector: string = co?.sector || "N/A";
   const industry: string = co?.industry || "N/A";
   const description: string = co?.description || "";
-  const peRatio: number | null = null;
-  const forwardPE: number | null = null;
-  const marketCap: number | null = co?.marketCap || null;
-  const revenueGrowth: number | null = null;
-  const profitMargin: number | null = null;
-  const targetPrice: number | null = null;
-  const dividendYield: number | null = null;
-  const beta: number | null = null;
-  const week52High: number | null = null;
-  const week52Low: number | null = null;
-  const returnOnEquity: number | null = null;
-  const debtToEquity: number | null = null;
-  const analystRating: null = null;
+  const peRatio: number | null = co?.peRatio ?? null;
+  const forwardPE: number | null = co?.forwardPE ?? null;
+  const marketCap: number | null = co?.marketCap ?? null;
+  const revenueGrowth: number | null = co?.revenueGrowthYOY ?? null;
+  const profitMargin: number | null = co?.profitMargin ?? null;
+  const targetPrice: number | null = co?.targetPrice ?? null;
+  const dividendYield: number | null = co?.dividendYield ?? null;
+  const beta: number | null = co?.beta ?? null;
+  const week52High: number | null = co?.week52High ?? null;
+  const week52Low: number | null = co?.week52Low ?? null;
+  const returnOnEquity: number | null = co?.returnOnEquity ?? null;
+  const debtToEquity: number | null = co?.debtToEquity ?? null;
+  const analystRating = co?.analystRating ?? null;
 
   // Tin tức từ Alpha Vantage
   const news: any[] = alphaNews.status === "fulfilled" ? alphaNews.value : [];
