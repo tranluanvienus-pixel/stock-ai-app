@@ -42,6 +42,8 @@ analyzeData.companyRevenueGrowth = analyzeData.revenueGrowth ? parseFloat(analyz
     ...result,
     raw_price: analyzeData.price,
     raw_pe_ratio: analyzeData.peRatio,
+    raw_pb_ratio: analyzeData.pbRatio,
+    raw_ps_ratio: analyzeData.psRatio,
     raw_technical_score: analyzeData.score,
   })
 }

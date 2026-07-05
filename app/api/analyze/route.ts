@@ -146,6 +146,7 @@ async function getAlphaVantageOverview(symbol: string) {
       peRatio: toNum(d.PERatio),
       forwardPE: toNum(d.ForwardPE),
       pbRatio: toNum(d.PriceToBookRatio),
+      psRatio: toNum(d.PriceToSalesRatioTTM),
       eps: toNum(d.EPS),
       beta: toNum(d.Beta),
       dividendYield: toNum(d.DividendYield) ? toNum(d.DividendYield)! * 100 : null,

@@ -49,14 +49,32 @@ function computeGrowthMomentum(data: AnalyzeApiResponse): number {
 // ---------- 2. Tính valuation (0-100) ----------
 function computeValuation(data: AnalyzeApiResponse): number {
   const pe = data.peRatio ? parseFloat(data.peRatio) : null
-  if (pe === null || pe <= 0) return 50 // không có dữ liệu -> trung tính
+  const pb = (data as any).pbRatio ? parseFloat((data as any).pbRatio) : null
+  const ps = (data as any).psRatio ? parseFloat((data as any).psRatio) : null
 
   let v: number
-  if (pe <= 15) v = 80
-  else if (pe <= 25) v = 65
-  else if (pe <= 35) v = 50
-  else if (pe <= 50) v = 35
-  else v = 20
+
+  if (pe !== null && pe > 0) {
+    if (pe <= 15) v = 80
+    else if (pe <= 25) v = 65
+    else if (pe <= 35) v = 50
+    else if (pe <= 50) v = 35
+    else v = 20
+  } else if (pb !== null && pb > 0) {
+    if (pb <= 1) v = 75
+    else if (pb <= 3) v = 60
+    else if (pb <= 6) v = 45
+    else if (pb <= 10) v = 30
+    else v = 20
+  } else if (ps !== null && ps > 0) {
+    if (ps <= 1) v = 70
+    else if (ps <= 3) v = 55
+    else if (ps <= 8) v = 40
+    else if (ps <= 15) v = 25
+    else v = 15
+  } else {
+    return 50
+  }
 
   // Điều chỉnh thêm theo dư địa tăng giá (target price vs giá hiện tại)
   const target = data.targetPrice ? parseFloat(data.targetPrice) : null
