@@ -126,14 +126,17 @@ async function getPolygonCompany(symbol: string) {
 
 // Alpha Vantage — company fundamentals (P/E, ROE, Beta, D/E...)
 async function getAlphaVantageOverview(symbol: string) {
-  if (!ALPHA_VANTAGE_KEY) return null;
+  if (!ALPHA_VANTAGE_KEY) { console.error("Alpha Vantage: THIẾU API KEY"); return null; }
   try {
     const res = await fetchWithTimeout(
       `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`
     );
-    if (!res.ok) return null;
+    if (!res.ok) { console.error("Alpha Vantage: response not ok, status =", res.status); return null; }
     const d = await res.json();
-    if (!d?.Symbol || d.Note) return null; // Note = rate limit hit
+    if (!d?.Symbol || d.Note) {
+        console.error("Alpha Vantage rate limit hoặc lỗi:", d?.Note || d?.["Error Message"] || JSON.stringify(d).slice(0, 200));
+        return null;
+      }
 
     const toNum = (v: any) => (v && v !== "None" && v !== "-") ? parseFloat(v) : null;
 
@@ -161,7 +164,7 @@ async function getAlphaVantageOverview(symbol: string) {
         sell: parseInt(d.AnalystRatingSell || "0"),
       } : null,
     };
-  } catch { return null; }
+  } catch (err) { console.error("Alpha Vantage: exception xảy ra:", err); return null; }
 }
 
 // Kết hợp Polygon (tên/mô tả) + Alpha Vantage (chỉ số tài chính)
@@ -877,6 +880,7 @@ export async function POST(req: Request) {
     forwardPE: forwardPE != null ? (forwardPE as number).toFixed(2) : null,
     marketCap,
     targetPrice: targetPrice != null ? (targetPrice as number).toFixed(2) : null,
+    revenueGrowth: revenueGrowth != null ? (revenueGrowth as number).toFixed(1) : null,
     dividendYield: dividendYield != null ? (dividendYield as number).toFixed(2) : null,
     beta: beta != null ? (beta as number).toFixed(2) : null,
     week52High: week52High != null ? (week52High as number).toFixed(2) : null,
