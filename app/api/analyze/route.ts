@@ -186,6 +186,7 @@ async function getAlphaCompany(symbol: string) {
     peRatio: avData?.peRatio ?? null,
     forwardPE: avData?.forwardPE ?? null,
     pbRatio: avData?.pbRatio ?? null,
+    psRatio: avData?.psRatio ?? null,
     eps: avData?.eps ?? null,
     beta: avData?.beta ?? null,
     dividendYield: avData?.dividendYield ?? null,
@@ -695,6 +696,8 @@ export async function POST(req: Request) {
   const description: string = co?.description || "";
   const peRatio: number | null = co?.peRatio ?? null;
   const forwardPE: number | null = co?.forwardPE ?? null;
+  const pbRatio: number | null = co?.pbRatio ?? null;
+  const psRatio: number | null = co?.psRatio ?? null;
   const marketCap: number | null = co?.marketCap ?? null;
   const revenueGrowth: number | null = co?.revenueGrowthYOY ?? null;
   const profitMargin: number | null = co?.profitMargin ?? null;
@@ -879,6 +882,8 @@ export async function POST(req: Request) {
     afterHoursLabel: afterHoursLabel || null,
     peRatio: peRatio != null ? (peRatio as number).toFixed(2) : null,
     forwardPE: forwardPE != null ? (forwardPE as number).toFixed(2) : null,
+    pbRatio: pbRatio != null ? (pbRatio as number).toFixed(2) : null,
+    psRatio: psRatio != null ? (psRatio as number).toFixed(2) : null,
     marketCap,
     targetPrice: targetPrice != null ? (targetPrice as number).toFixed(2) : null,
     revenueGrowth: revenueGrowth != null ? (revenueGrowth as number).toFixed(1) : null,

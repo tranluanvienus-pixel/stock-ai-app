@@ -80,7 +80,10 @@ export async function GET(req: NextRequest) {
         perf20d,
         rsi,
         note: row.note ?? null,
-        peRatioMissing: evalData.raw_pe_ratio === null || evalData.raw_pe_ratio === undefined,
+        peRatioMissing:
+  (evalData.raw_pe_ratio === null || evalData.raw_pe_ratio === undefined) &&
+  (evalData.raw_pb_ratio === null || evalData.raw_pb_ratio === undefined) &&
+  (evalData.raw_ps_ratio === null || evalData.raw_ps_ratio === undefined),
       });
     } catch (err) {
       failedSymbols.push(row.symbol);

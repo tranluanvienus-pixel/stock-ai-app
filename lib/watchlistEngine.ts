@@ -89,7 +89,7 @@ function classifyStock(input: WatchlistStockInput): { labels: WatchlistLabel[]; 
 
   if (input.peRatioMissing) {
     reasonCodes.push(
-      "Không tính được P/E do công ty đang lỗ — điểm định giá (valuation) đang dùng giá trị trung tính mặc định, có thể chưa phản ánh đúng thực tế, nên tự đánh giá thêm"
+      "Không tính được P/E, P/B lẫn P/S — điểm định giá (valuation) đang dùng giá trị trung tính mặc định, có thể chưa phản ánh đúng thực tế, nên tự đánh giá thêm"
     );
   }
 
