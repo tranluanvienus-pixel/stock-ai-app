@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 
 export default function Home() {
   const [symbol, setSymbol] = useState("");
@@ -143,6 +144,9 @@ export default function Home() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+          <Link href="/portfolio/dashboard" className="bg-amber-500 hover:bg-amber-400 text-gray-900 text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1">
+  💰 Portfolio AI
+</Link>
             {/* Market pulse */}
             {marketData && (
               <div className="flex gap-2 text-xs">
