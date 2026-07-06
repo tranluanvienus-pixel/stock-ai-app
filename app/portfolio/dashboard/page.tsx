@@ -60,6 +60,9 @@ export default function Dashboard() {
       .catch(() => setDeployCash({ error: 'Lỗi khi tải Deploy Cash' }))
       .finally(() => setDeployLoading(false))
   }
+  const [alerts, setAlerts] = useState<any[]>([])
+  const [alertsLoading, setAlertsLoading] = useState(false)
+  const [showAllAlerts, setShowAllAlerts] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [editingCapital, setEditingCapital] = useState('')
@@ -95,8 +98,16 @@ export default function Dashboard() {
       .catch(() => setProfile(null))
       .finally(() => setProfileLoading(false))
   }
+  const loadAlerts = () => {
+    setAlertsLoading(true)
+    fetch(`/api/portfolio/alerts?user_id=${USER_ID}&limit=50`)
+      .then((r) => r.json())
+      .then((d) => setAlerts(d.alerts || []))
+      .catch(() => setAlerts([]))
+      .finally(() => setAlertsLoading(false))
+  }
 
-  useEffect(() => { loadHoldings(); loadProfile(); loadRegime(); loadHealth(); loadRebalance(); loadDeployCash(); loadWatchlist() }, [])
+  useEffect(() => { loadHoldings(); loadProfile(); loadAlerts(); loadRegime(); loadHealth(); loadRebalance(); loadDeployCash(); loadWatchlist() }, [])
   useEffect(() => {
     if (!profile) return
     const costBasis = holdings.reduce((sum, h) => sum + (h.avg_cost ?? 0) * (h.shares ?? 0), 0)
@@ -260,6 +271,7 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
     <div className="min-h-screen bg-gray-950 text-white p-3 font-sans">
       <div className="max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold text-blue-400 mb-4">📊 Dashboard danh mục</h1>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Vốn đầu tư & Lãi/Lỗ */}
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
           <h3 className="text-base font-semibold mb-3">💵 Vốn đầu tư</h3>
@@ -323,6 +335,63 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
           )}
         </div>
 
+        {/* Thông báo mới */}
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-base font-semibold flex items-center gap-2">
+                🔔 Thông báo mới
+                {alerts.filter((a) => !a.seen).length > 0 && (
+                  <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {alerts.filter((a) => !a.seen).length}
+                  </span>
+                )}
+              </h3>
+              <button onClick={loadAlerts} className="bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 text-sm">🔄</button>
+            </div>
+            {alertsLoading && <p className="text-sm text-gray-400">Đang tải...</p>}
+            {!alertsLoading && alerts.length === 0 && (
+              <p className="text-sm text-gray-500 italic">Chưa có thông báo nào. Thông báo sẽ tự động cập nhật mỗi phiên giao dịch.</p>
+            )}
+            {alerts.length > 0 && (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {(showAllAlerts ? alerts : alerts.slice(0, 5)).map((a) => {
+                  const actionColor: Record<string, string> = {
+                    buy_more: 'text-green-400 bg-green-950 border-green-900',
+                    trim: 'text-amber-400 bg-amber-950 border-amber-900',
+                    sell_all: 'text-red-400 bg-red-950 border-red-900',
+                    watch: 'text-gray-400 bg-gray-800 border-gray-700',
+                    hold: 'text-blue-400 bg-blue-950 border-blue-900',
+                  }
+                  const actionLabel: Record<string, string> = {
+                    buy_more: 'MUA THÊM',
+                    trim: 'CHỐT LỜI',
+                    sell_all: 'BÁN HẲN',
+                    watch: 'THEO DÕI',
+                    hold: 'GIỮ NGUYÊN',
+                  }
+                  return (
+                    <div key={a.alert_id} className={`rounded-lg p-3 border ${actionColor[a.recommendation] || 'bg-gray-800 border-gray-700 text-gray-300'} ${!a.seen ? 'ring-1 ring-blue-500' : ''}`}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-white">{a.symbol}</span>
+                        <span className="text-sm font-bold">{actionLabel[a.recommendation] || a.recommendation}</span>
+                      </div>
+                      <div className="text-sm text-gray-300 mb-1">
+                        Giá: ${a.price_at_eval} · Điểm: {a.score_total} · Tin cậy: {a.confidence_score}%
+                      </div>
+                      {a.reasoning_text && <div className="text-sm text-gray-400 mb-1">{a.reasoning_text}</div>}
+                      <div className="text-xs text-gray-500">{new Date(a.created_at).toLocaleString('vi-VN')}</div>
+                    </div>
+                  )
+                })}
+                {alerts.length > 5 && (
+                  <button onClick={() => setShowAllAlerts(!showAllAlerts)} className="text-blue-400 hover:text-blue-300 text-sm">
+                    {showAllAlerts ? 'Thu gọn' : `Xem thêm ${alerts.length - 5} thông báo`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
         {/* Market Regime */}
         <Section icon="📊" title="Chế độ thị trường (Market Regime)" onRefresh={loadRegime} loading={regimeLoading} error={regime?.error}>
           {regime && !regime.error && (
