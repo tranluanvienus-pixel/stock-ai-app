@@ -1,4 +1,4 @@
-import { calculatePositionSizing, CandidateStock } from "./positionSizing";
+import { calculatePositionSizing, calculateRebalanceWeights, CandidateStock } from "./positionSizing";
 import { PortfolioRole } from "./scoringEngine";
 import { MarketRegimeLabel } from "./marketRegime";
 
@@ -84,7 +84,7 @@ export function calculateRebalance(input: RebalanceInput): RebalanceResult {
     sector: h.sector,
   }));
 
-  const sizingResult = calculatePositionSizing({
+  const sizingResult = calculateRebalanceWeights({
     capital_usd: totalPortfolioValueUsd,
     cash_reserve_pct: cashReservePct,
     investor_type: investorType,
@@ -119,10 +119,7 @@ export function calculateRebalance(input: RebalanceInput): RebalanceResult {
         currentValueUsd: Math.round(currentValueUsd),
         targetValueUsd: 0,
         scoreTotal: h.scoreTotal,
-        reason:
-          h.scoreTotal < 55
-            ? `Điểm số ${h.scoreTotal}/100 quá thấp — không còn đủ điều kiện nắm giữ`
-            : "Không nằm trong top vị thế được ưu tiên theo phân bổ hiện tại",
+        reason: `Điểm số ${h.scoreTotal}/100 — dưới ngưỡng an toàn tối thiểu (30/100), công ty có dấu hiệu suy yếu nghiêm trọng. Đề xuất bán hết ${h.shares} cổ đang giữ để tránh rủi ro tiếp tục xuống thêm.`,
       });
       continue;
     }
@@ -133,20 +130,16 @@ export function calculateRebalance(input: RebalanceInput): RebalanceResult {
     const deltaPct = currentWeightPct - target.weight_pct;
 
     let action: RebalanceAction = "HOLD";
-    let reason = "Tỷ trọng hiện tại đã gần với mục tiêu, chưa cần điều chỉnh";
+    let reason = `Điểm số ${h.scoreTotal}/100 — tỷ trọng hiện tại ${currentWeightPct.toFixed(1)}% đã gần với mục tiêu ${target.weight_pct.toFixed(1)}% (chênh lệch dưới ${minTradeThresholdPct}%). Giữ nguyên ${h.shares} cổ, chưa cần điều chỉnh.`;
 
     if (Math.abs(deltaPct) < minTradeThresholdPct) {
       action = "HOLD";
     } else if (deltaShares > 0) {
       action = "BUY_MORE";
-      reason = `Tỷ trọng hiện tại (${currentWeightPct.toFixed(1)}%) thấp hơn mục tiêu (${target.weight_pct.toFixed(
-        1
-      )}%) — có thể mua thêm`;
+      reason = `Điểm số ${h.scoreTotal}/100 — tỷ trọng hiện tại ${currentWeightPct.toFixed(1)}% thấp hơn mục tiêu ${target.weight_pct.toFixed(1)}%. Đề xuất mua thêm ${deltaShares} cổ (từ ${h.shares} lên ${targetShares} cổ) để đạt đúng tỷ trọng.`;
     } else if (deltaShares < 0) {
       action = "SELL_PARTIAL";
-      reason = `Tỷ trọng hiện tại (${currentWeightPct.toFixed(1)}%) cao hơn mục tiêu (${target.weight_pct.toFixed(
-        1
-      )}%) — nên giảm bớt để cân bằng`;
+      reason = `Điểm số ${h.scoreTotal}/100 — tỷ trọng hiện tại ${currentWeightPct.toFixed(1)}% cao hơn mục tiêu ${target.weight_pct.toFixed(1)}%. Đề xuất bán bớt ${Math.abs(deltaShares)} cổ (từ ${h.shares} xuống ${targetShares} cổ), vẫn giữ lại phần còn lại — không bán hết.`;
     }
 
     recommendations.push({

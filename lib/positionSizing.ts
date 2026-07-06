@@ -151,3 +151,47 @@ export function calculatePositionSizing(input: PositionSizingInput): PositionSiz
     total_invested_usd: Math.round(totalInvested),
   }
 }
+
+// ---------- Rebalance riêng cho mã ĐANG GIỮ: không loại bỏ theo ngưỡng mua mới ----------
+const SEVERE_EXIT_SCORE = 30
+
+export type RebalanceWeightResult = {
+  positions: PositionResult[]
+  excluded_severe: string[]
+}
+
+export function calculateRebalanceWeights(input: PositionSizingInput): RebalanceWeightResult {
+  const maxPositionPct = MAX_POSITION_PCT[input.investor_type] ?? MAX_POSITION_PCT.balanced
+  const investableCapital = input.capital_usd * (1 - input.cash_reserve_pct / 100)
+  const targetSum = 100 - input.cash_reserve_pct
+
+  const excludedSevere = input.candidates.filter((c) => c.score_total < SEVERE_EXIT_SCORE)
+  const kept = input.candidates.filter((c) => c.score_total >= SEVERE_EXIT_SCORE)
+
+  if (kept.length === 0) {
+    return { positions: [], excluded_severe: excludedSevere.map((c) => c.symbol) }
+  }
+
+  const weights = waterFillWeights(
+    kept.map((s) => ({ symbol: s.symbol, score: s.score_total })),
+    targetSum,
+    maxPositionPct
+  )
+
+  const positions: PositionResult[] = kept.map((s) => {
+    const weightPct = weights[s.symbol] ?? 0
+    const allocatedUsd = investableCapital * (weightPct / targetSum)
+    const shares = Math.floor(allocatedUsd / s.current_price)
+    return {
+      symbol: s.symbol,
+      portfolio_role: s.portfolio_role,
+      score_total: s.score_total,
+      weight_pct: Math.round(weightPct * 10) / 10,
+      allocated_usd: Math.round(allocatedUsd),
+      shares,
+      price: s.current_price,
+    }
+  })
+
+  return { positions, excluded_severe: excludedSevere.map((c) => c.symbol) }
+}
