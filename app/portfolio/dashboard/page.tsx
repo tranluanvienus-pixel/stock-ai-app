@@ -48,7 +48,6 @@ export default function Dashboard() {
   }
   const [deployCash, setDeployCash] = useState<any>(null)
   const [deployLoading, setDeployLoading] = useState(false)
-
   const [cashAmount, setCashAmount] = useState('10000')
 
   const loadDeployCash = () => {
@@ -78,6 +77,7 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadHoldings(); loadRegime(); loadHealth(); loadRebalance(); loadDeployCash(); loadWatchlist() }, [])
+
   const addHolding = async () => {
     if (!newSymbol || !newShares || !newCost) return
     setStatus('Đang thêm...')
@@ -116,323 +116,318 @@ export default function Dashboard() {
   }
 
   const recLabel: Record<string, { text: string; color: string }> = {
-    buy_more: { text: 'MUA THÊM', color: '#3DDC97' },
-    trim: { text: 'CHỐT LỜI MỘT PHẦN', color: '#F2B84B' },
-    sell_all: { text: 'BÁN HẲN', color: '#FF6B6B' },
-    watch: { text: 'THEO DÕI', color: '#8891A6' },
-    hold: { text: 'GIỮ NGUYÊN', color: '#6C8CFF' },
+    buy_more: { text: 'MUA THÊM', color: 'bg-green-600' },
+    trim: { text: 'CHỐT LỜI MỘT PHẦN', color: 'bg-amber-500' },
+    sell_all: { text: 'BÁN HẲN', color: 'bg-red-600' },
+    watch: { text: 'THEO DÕI', color: 'bg-gray-600' },
+    hold: { text: 'GIỮ NGUYÊN', color: 'bg-blue-600' },
   }
 
+  const actionColor: Record<string, string> = {
+    EXIT_FULLY: 'text-red-400 bg-red-950 border-red-900',
+    SELL: 'text-amber-400 bg-amber-950 border-amber-900',
+    BUY: 'text-green-400 bg-green-950 border-green-900',
+    HOLD: 'text-blue-400 bg-blue-950 border-blue-900',
+  }
+
+  const watchLabelColor: Record<string, string> = {
+    MOMENTUM_PICK: 'bg-green-600',
+    VALUE_OPPORTUNITY: 'bg-blue-600',
+    OVEREXTENDED_CAUTION: 'bg-red-600',
+    NEUTRAL: 'bg-gray-600',
+  }
+
+  const Section = ({ icon, title, onRefresh, loading, error, children }: any) => (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-base font-semibold text-white flex items-center gap-2">
+          <span>{icon}</span> {title}
+        </h3>
+        {onRefresh && (
+          <button onClick={onRefresh} className="bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 text-sm">
+            🔄
+          </button>
+        )}
+      </div>
+      {loading && <p className="text-sm text-gray-400">Đang tải...</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {children}
+    </div>
+  )
+
+  const StatPill = ({ label, value, color }: any) => (
+    <div className="bg-gray-800 rounded-lg px-3 py-2 text-sm">
+      <span className="text-gray-400">{label}: </span>
+      <span className={`font-bold ${color || 'text-white'}`}>{value}</span>
+    </div>
+  )
+
+  const DebugDetails = ({ data }: any) => (
+    <details className="mt-3 text-sm text-gray-500">
+      <summary className="cursor-pointer">Xem dữ liệu thô (debug)</summary>
+      <pre className="whitespace-pre-wrap text-xs bg-gray-950 rounded-lg p-3 mt-2 overflow-x-auto">{JSON.stringify(data, null, 2)}</pre>
+    </details>
+  )
+
   return (
-    <div style={{ maxWidth: 800, margin: '30px auto', padding: 20, fontFamily: 'sans-serif' }}>
-      <h1>Dashboard danh mục</h1>
-      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16, marginBottom: 20, background: '#f7f9fc' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>📊 Chế độ thị trường (Market Regime)</h3>
-          <button onClick={loadRegime} style={{ padding: '4px 10px' }}>🔄</button>
-        </div>
-        {regimeLoading && <p>Đang tải...</p>}
-        {regime && !regime.error && (
-          <div style={{ marginTop: 10 }}>
-            <p style={{ fontSize: 18, fontWeight: 'bold' }}>
-              {regime.regime || regime.marketRegime || 'N/A'}
-            </p>
-           <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#555', marginBottom: 8 }}>
-              <span>Score: <b>{regime.score}</b>/100</span>
-              <span>Độ tin cậy: <b>{regime.confidence}</b>%</span>
-              {regime.signals?.vix != null && <span>VIX: <b>{regime.signals.vix.toFixed(1)}</b></span>}
-              {regime.signals?.fearGreedValue != null && (
-                <span>Fear & Greed: <b>{regime.signals.fearGreedValue}</b> ({regime.signals.fearGreedLabel})</span>
+    <div className="min-h-screen bg-gray-950 text-white p-3 font-sans">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-2xl font-bold text-blue-400 mb-4">📊 Dashboard danh mục</h1>
+
+        {/* Market Regime */}
+        <Section icon="📊" title="Chế độ thị trường (Market Regime)" onRefresh={loadRegime} loading={regimeLoading} error={regime?.error}>
+          {regime && !regime.error && (
+            <div>
+              <p className="text-xl font-bold text-white mb-2">{regime.regime || regime.marketRegime || 'N/A'}</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <StatPill label="Score" value={`${regime.score}/100`} />
+                <StatPill label="Độ tin cậy" value={`${regime.confidence}%`} />
+                {regime.signals?.vix != null && <StatPill label="VIX" value={regime.signals.vix.toFixed(1)} />}
+                {regime.signals?.fearGreedValue != null && (
+                  <StatPill label="Fear & Greed" value={`${regime.signals.fearGreedValue} (${regime.signals.fearGreedLabel})`} />
+                )}
+              </div>
+              {regime.reasonCodes?.length > 0 && (
+                <ul className="space-y-1 text-sm text-gray-300 list-disc list-inside">
+                  {regime.reasonCodes.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                </ul>
               )}
+              <DebugDetails data={regime} />
             </div>
-            {regime.reasonCodes && regime.reasonCodes.length > 0 && (
-              <ul style={{ margin: '8px 0', paddingLeft: 20, fontSize: 13, color: '#333' }}>
-                {regime.reasonCodes.map((reason: string, i: number) => (
-                  <li key={i}>{reason}</li>
-                ))}
-              </ul>
-            )}
-            <details style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-              <summary>Xem dữ liệu thô (debug)</summary>
-              <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(regime, null, 2)}</pre>
-            </details>
-          </div>
-        )}
-        {regime?.error && <p style={{ color: 'red' }}>{regime.error}</p>}
-      </div>
-      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16, marginBottom: 20, background: '#f7f9fc' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>💊 Sức khỏe danh mục (Health Score)</h3>
-          <button onClick={loadHealth} style={{ padding: '4px 10px' }}>🔄</button>
-        </div>
-        {healthLoading && <p>Đang tải...</p>}
-        {health && !health.error && (
-          <div style={{ marginTop: 10 }}>
-            <p style={{ fontSize: 18, fontWeight: 'bold' }}>
-              Điểm sức khỏe: {health.healthScore}/100 — <span style={{ color: health.grade === 'POOR' ? '#FF6B6B' : health.grade === 'GOOD' ? '#3DDC97' : '#F2B84B' }}>{health.grade}</span>
-            </p>
-            {health.breakdown && (
-              <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#555', marginBottom: 8, flexWrap: 'wrap' }}>
-                <span>Chất lượng: <b>{health.breakdown.qualityScore}</b></span>
-                <span>Đa dạng hóa: <b>{health.breakdown.diversificationScore}</b></span>
-                <span>Độ tin cậy: <b>{health.breakdown.confidenceScore}</b></span>
-                <span>Khớp thị trường: <b>{health.breakdown.regimeAlignmentScore}</b></span>
-              </div>
-            )}
-            {health.concentrationWarnings && health.concentrationWarnings.length > 0 && (
-              <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 6, padding: 8, marginBottom: 8 }}>
-                {health.concentrationWarnings.map((w: string, i: number) => (
-                  <div key={i} style={{ fontSize: 13, color: '#856404' }}>⚠️ {w}</div>
-                ))}
-              </div>
-            )}
-            {health.reasonCodes && health.reasonCodes.length > 0 && (
-              <ul style={{ margin: '8px 0', paddingLeft: 20, fontSize: 13, color: '#333' }}>
-                {health.reasonCodes.map((reason: string, i: number) => (
-                  <li key={i}>{reason}</li>
-                ))}
-              </ul>
-            )}
-            <details style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-              <summary>Xem dữ liệu thô (debug)</summary>
-              <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(health, null, 2)}</pre>
-            </details>
-          </div>
-        )}
-        {health?.error && <p style={{ color: 'red' }}>{health.error}</p>}
-      </div>
-      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16, marginBottom: 20, background: '#f7f9fc' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>⚖️ Đề xuất cân bằng lại (Rebalance)</h3>
-          <button onClick={loadRebalance} style={{ padding: '4px 10px' }}>🔄</button>
-        </div>
-        {rebalanceLoading && <p>Đang tải...</p>}
-        {rebalance && !rebalance.error && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#555', marginBottom: 10 }}>
-              <span>Tổng giá trị: <b>${rebalance.totalPortfolioValueUsd?.toLocaleString()}</b></span>
-              <span>Mua: <b style={{ color: '#3DDC97' }}>{rebalance.summary?.buyCount}</b></span>
-              <span>Bán: <b style={{ color: '#F2B84B' }}>{rebalance.summary?.sellCount}</b></span>
-              <span>Thoát hẳn: <b style={{ color: '#FF6B6B' }}>{rebalance.summary?.exitCount}</b></span>
-              <span>Giữ nguyên: <b style={{ color: '#6C8CFF' }}>{rebalance.summary?.holdCount}</b></span>
-            </div>
-            {rebalance.recommendations && rebalance.recommendations.length > 0 && (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>
-                    <th>Mã</th><th>Hành động</th><th>Hiện tại</th><th>Mục tiêu</th><th>Điểm</th><th>Lý do</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rebalance.recommendations.map((r: any, i: number) => {
-                    const actionColor: Record<string, string> = {
-                      EXIT_FULLY: '#FF6B6B', SELL: '#F2B84B', BUY: '#3DDC97', HOLD: '#6C8CFF',
-                    }
-                    return (
-                      <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                        <td><b>{r.symbol}</b></td>
-                        <td style={{ color: actionColor[r.action] || '#333', fontWeight: 'bold' }}>{r.action}</td>
-                        <td>{r.currentShares} cp ({r.currentWeightPct}%)</td>
-                        <td>{r.targetShares} cp ({r.targetWeightPct}%)</td>
-                        <td>{r.scoreTotal}</td>
-                        <td style={{ fontSize: 12, color: '#666' }}>{r.reason}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
-            {rebalance.reasonCodes && rebalance.reasonCodes.length > 0 && (
-              <ul style={{ margin: '10px 0 0', paddingLeft: 20, fontSize: 13, color: '#333' }}>
-                {rebalance.reasonCodes.map((reason: string, i: number) => (
-                  <li key={i}>{reason}</li>
-                ))}
-              </ul>
-            )}
-            <details style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-              <summary>Xem dữ liệu thô (debug)</summary>
-              <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(rebalance, null, 2)}</pre>
-            </details>
-          </div>
-        )}
-        {rebalance?.error && <p style={{ color: 'red' }}>{rebalance.error}</p>}
-      </div>
-      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16, marginBottom: 20, background: '#f7f9fc' }}>
-       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <h3 style={{ margin: 0 }}>💰 Triển khai tiền mặt mới (Deploy Cash)</h3>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 13 }}>Số tiền: $</span>
-            <input
-              type="number"
-              value={cashAmount}
-              onChange={(e) => setCashAmount(e.target.value)}
-              style={{ width: 90, padding: 4 }}
-            />
-            <button onClick={loadDeployCash} style={{ padding: '4px 10px' }}>Tính</button>
-          </div>
-        </div> 
-        {deployLoading && <p>Đang tải...</p>}
-        {deployCash && !deployCash.error && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#555', marginBottom: 10, flexWrap: 'wrap' }}>
-              <span>Tiền mới: <b>${deployCash.newCashUsd?.toLocaleString()}</b></span>
-              <span>Đã triển khai: <b style={{ color: '#3DDC97' }}>${deployCash.totalDeployedUsd?.toLocaleString()}</b></span>
-              <span>Còn lại: <b style={{ color: '#F2B84B' }}>${deployCash.leftoverCashUsd?.toLocaleString()}</b></span>
-              <span>Tổng danh mục sau: <b>${deployCash.totalPortfolioValueAfterUsd?.toLocaleString()}</b></span>
-            </div>
-            {deployCash.recommendations && deployCash.recommendations.length > 0 ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>
-                    <th>Mã</th><th>Số tiền mua thêm</th><th>Lý do</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deployCash.recommendations.map((r: any, i: number) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                      <td><b>{r.symbol}</b></td>
-                      <td>${r.amountUsd?.toLocaleString?.() ?? r.amountUsd}</td>
-                      <td style={{ fontSize: 12, color: '#666' }}>{r.reason}</td>
-                    </tr>
+          )}
+        </Section>
+
+        {/* Health Score */}
+        <Section icon="💊" title="Sức khỏe danh mục (Health Score)" onRefresh={loadHealth} loading={healthLoading} error={health?.error}>
+          {health && !health.error && (
+            <div>
+              <p className="text-xl font-bold mb-2">
+                Điểm sức khỏe: {health.healthScore}/100 —{' '}
+                <span className={health.grade === 'POOR' ? 'text-red-400' : health.grade === 'GOOD' ? 'text-green-400' : 'text-amber-400'}>
+                  {health.grade}
+                </span>
+              </p>
+              {health.breakdown && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <StatPill label="Chất lượng" value={health.breakdown.qualityScore} />
+                  <StatPill label="Đa dạng hóa" value={health.breakdown.diversificationScore} />
+                  <StatPill label="Độ tin cậy" value={health.breakdown.confidenceScore} />
+                  <StatPill label="Khớp thị trường" value={health.breakdown.regimeAlignmentScore} />
+                </div>
+              )}
+              {health.concentrationWarnings?.length > 0 && (
+                <div className="bg-amber-950 border border-amber-800 rounded-lg p-3 mb-3 space-y-1">
+                  {health.concentrationWarnings.map((w: string, i: number) => (
+                    <div key={i} className="text-sm text-amber-300">⚠️ {w}</div>
                   ))}
-                </tbody>
-              </table>
-            ) : (
-              <p style={{ fontSize: 13, color: '#888', fontStyle: 'italic' }}>Không có đề xuất mua mã nào lúc này.</p>
-            )}
-            {deployCash.reasonCodes && deployCash.reasonCodes.length > 0 && (
-              <ul style={{ margin: '10px 0 0', paddingLeft: 20, fontSize: 13, color: '#333' }}>
-                {deployCash.reasonCodes.map((reason: string, i: number) => (
-                  <li key={i}>{reason}</li>
-                ))}
-              </ul>
-            )}
-            <details style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-              <summary>Xem dữ liệu thô (debug)</summary>
-              <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(deployCash, null, 2)}</pre>
-            </details>
-          </div>
-        )}
-        {deployCash?.error && <p style={{ color: 'red' }}>{deployCash.error}</p>}
-      </div>
-      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16, marginBottom: 20, background: '#f7f9fc' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>👁️ Danh sách theo dõi (Watchlist Engine)</h3>
-          <button onClick={loadWatchlist} style={{ padding: '4px 10px' }}>🔄</button>
-        </div>
-        {watchlistLoading && <p>Đang tải...</p>}
-        {watchlist && !watchlist.error && (
-          <div style={{ marginTop: 10 }}>
-            {watchlist.summary && (
-              <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#555', marginBottom: 10, flexWrap: 'wrap' }}>
-                <span>Momentum: <b style={{ color: '#3DDC97' }}>{watchlist.summary.momentumPickCount}</b></span>
-                <span>Cơ hội giá trị: <b style={{ color: '#6C8CFF' }}>{watchlist.summary.valueOpportunityCount}</b></span>
-                <span>Quá đà (cẩn thận): <b style={{ color: '#FF6B6B' }}>{watchlist.summary.overextendedCautionCount}</b></span>
-                <span>Trung lập: <b style={{ color: '#8891A6' }}>{watchlist.summary.neutralCount}</b></span>
+                </div>
+              )}
+              {health.reasonCodes?.length > 0 && (
+                <ul className="space-y-1 text-sm text-gray-300 list-disc list-inside">
+                  {health.reasonCodes.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                </ul>
+              )}
+              <DebugDetails data={health} />
+            </div>
+          )}
+        </Section>
+
+        {/* Rebalance */}
+        <Section icon="⚖️" title="Đề xuất cân bằng lại (Rebalance)" onRefresh={loadRebalance} loading={rebalanceLoading} error={rebalance?.error}>
+          {rebalance && !rebalance.error && (
+            <div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <StatPill label="Tổng giá trị" value={`$${rebalance.totalPortfolioValueUsd?.toLocaleString()}`} />
+                <StatPill label="Mua" value={rebalance.summary?.buyCount} color="text-green-400" />
+                <StatPill label="Bán" value={rebalance.summary?.sellCount} color="text-amber-400" />
+                <StatPill label="Thoát hẳn" value={rebalance.summary?.exitCount} color="text-red-400" />
+                <StatPill label="Giữ nguyên" value={rebalance.summary?.holdCount} color="text-blue-400" />
               </div>
-            )}
-            {watchlist.stocks && watchlist.stocks.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {watchlist.stocks.map((s: any, i: number) => {
-                  const labelColor: Record<string, string> = {
-                    MOMENTUM_PICK: '#3DDC97', VALUE_OPPORTUNITY: '#6C8CFF',
-                    OVEREXTENDED_CAUTION: '#FF6B6B', NEUTRAL: '#8891A6',
-                  }
-                  return (
-                    <div key={i} style={{ border: '1px solid #eee', borderRadius: 6, padding: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span><b>{s.symbol}</b> — ${s.currentPrice}</span>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {rebalance.recommendations?.length > 0 && (
+                <div className="space-y-2">
+                  {rebalance.recommendations.map((r: any, i: number) => (
+                    <div key={i} className={`rounded-lg p-3 border ${actionColor[r.action] || 'bg-gray-800 border-gray-700 text-gray-300'}`}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-white text-base">{r.symbol}</span>
+                        <span className="text-sm font-bold">{r.action}</span>
+                      </div>
+                      <div className="text-sm text-gray-300 mb-1">
+                        Hiện tại: {r.currentShares} cp ({r.currentWeightPct}%) → Mục tiêu: {r.targetShares} cp ({r.targetWeightPct}%) · Điểm: {r.scoreTotal}
+                      </div>
+                      <div className="text-sm text-gray-400">{r.reason}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {rebalance.reasonCodes?.length > 0 && (
+                <ul className="space-y-1 text-sm text-gray-300 list-disc list-inside mt-3">
+                  {rebalance.reasonCodes.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                </ul>
+              )}
+              <DebugDetails data={rebalance} />
+            </div>
+          )}
+        </Section>
+
+        {/* Deploy Cash */}
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
+          <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+            <h3 className="text-base font-semibold flex items-center gap-2">💰 Triển khai tiền mặt mới (Deploy Cash)</h3>
+            <div className="flex gap-2 items-center">
+              <span className="text-sm text-gray-400">Số tiền: $</span>
+              <input
+                type="number"
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+                className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
+              />
+              <button onClick={loadDeployCash} className="bg-blue-700 hover:bg-blue-600 rounded-lg px-3 py-1.5 text-sm font-medium">Tính</button>
+            </div>
+          </div>
+          {deployLoading && <p className="text-sm text-gray-400">Đang tải...</p>}
+          {deployCash?.error && <p className="text-sm text-red-400">{deployCash.error}</p>}
+          {deployCash && !deployCash.error && (
+            <div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <StatPill label="Tiền mới" value={`$${deployCash.newCashUsd?.toLocaleString()}`} />
+                <StatPill label="Đã triển khai" value={`$${deployCash.totalDeployedUsd?.toLocaleString()}`} color="text-green-400" />
+                <StatPill label="Còn lại" value={`$${deployCash.leftoverCashUsd?.toLocaleString()}`} color="text-amber-400" />
+                <StatPill label="Tổng danh mục sau" value={`$${deployCash.totalPortfolioValueAfterUsd?.toLocaleString()}`} />
+              </div>
+              {deployCash.recommendations?.length > 0 ? (
+                <div className="space-y-2">
+                  {deployCash.recommendations.map((r: any, i: number) => (
+                    <div key={i} className="bg-gray-800 rounded-lg p-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-white">{r.symbol}</span>
+                        <span className="text-green-400 font-bold">${r.amountUsd?.toLocaleString?.() ?? r.amountUsd}</span>
+                      </div>
+                      <div className="text-sm text-gray-400">{r.reason}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">Không có đề xuất mua mã nào lúc này.</p>
+              )}
+              {deployCash.reasonCodes?.length > 0 && (
+                <ul className="space-y-1 text-sm text-gray-300 list-disc list-inside mt-3">
+                  {deployCash.reasonCodes.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                </ul>
+              )}
+              <DebugDetails data={deployCash} />
+            </div>
+          )}
+        </div>
+
+        {/* Watchlist */}
+        <Section icon="👁️" title="Danh sách theo dõi (Watchlist Engine)" onRefresh={loadWatchlist} loading={watchlistLoading} error={watchlist?.error}>
+          {watchlist && !watchlist.error && (
+            <div>
+              {watchlist.summary && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <StatPill label="Momentum" value={watchlist.summary.momentumPickCount} color="text-green-400" />
+                  <StatPill label="Cơ hội giá trị" value={watchlist.summary.valueOpportunityCount} color="text-blue-400" />
+                  <StatPill label="Quá đà" value={watchlist.summary.overextendedCautionCount} color="text-red-400" />
+                  <StatPill label="Trung lập" value={watchlist.summary.neutralCount} color="text-gray-400" />
+                </div>
+              )}
+              {watchlist.stocks?.length > 0 && (
+                <div className="space-y-2">
+                  {watchlist.stocks.map((s: any, i: number) => (
+                    <div key={i} className="bg-gray-800 rounded-lg p-3">
+                      <div className="flex flex-wrap justify-between items-center gap-2 mb-1">
+                        <span className="font-bold text-white">{s.symbol} — ${s.currentPrice}</span>
+                        <div className="flex flex-wrap gap-1.5 items-center">
                           {s.labels?.map((l: string, j: number) => (
-                            <span key={j} style={{ fontSize: 11, fontWeight: 'bold', color: 'white', background: labelColor[l] || '#888', padding: '2px 8px', borderRadius: 10 }}>{l}</span>
+                            <span key={j} className={`text-xs font-bold text-white px-2 py-0.5 rounded-full ${watchLabelColor[l] || 'bg-gray-600'}`}>{l}</span>
                           ))}
-                          <span style={{ fontSize: 13, color: '#555' }}>Điểm: {s.scoreTotal}</span>
+                          <span className="text-sm text-gray-400">Điểm: {s.scoreTotal}</span>
                         </div>
                       </div>
-                      {s.note && <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{s.note}</div>}
-                      {s.reasonCodes && s.reasonCodes.length > 0 && (
-                        <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12, color: '#777' }}>
+                      {s.note && <div className="text-sm text-gray-400">{s.note}</div>}
+                      {s.reasonCodes?.length > 0 && (
+                        <ul className="space-y-0.5 text-sm text-gray-400 list-disc list-inside mt-1">
                           {s.reasonCodes.map((r: string, j: number) => <li key={j}>{r}</li>)}
                         </ul>
                       )}
                     </div>
-                  )
-                })}
-              </div>
-            )}
-            <details style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-              <summary>Xem dữ liệu thô (debug)</summary>
-              <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(watchlist, null, 2)}</pre>
-            </details>
-          </div>
-        )}
-        {watchlist?.error && <p style={{ color: 'red' }}>{watchlist.error}</p>}
-      </div>
-
-      <div style={{ marginBottom: 10 }}>
-        <a href="/portfolio/setup" style={{ color: '#6C8CFF' }}>← Chỉnh sửa hồ sơ đầu tư</a>
-      </div>
-
-      <h2 style={{ marginTop: 30 }}>Danh mục đang giữ</h2>
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>
-            <th>Mã</th><th>Số cổ phiếu</th><th>Giá vốn</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {holdings.map((h) => (
-            <tr key={h.holding_id} style={{ borderBottom: '1px solid #eee' }}>
-              <td>{h.symbol}</td>
-              <td>{h.shares}</td>
-              <td>${h.avg_cost}</td>
-              <td><button onClick={() => removeHolding(h.holding_id)}>Xóa</button></td>
-            </tr>
-          ))}
-          {holdings.length === 0 && <tr><td colSpan={4}>Chưa có mã nào</td></tr>}
-        </tbody>
-      </table>
-
-      <h3>Thêm mã mới vào danh mục</h3>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <input placeholder="Mã (VD: MSFT)" value={newSymbol} onChange={(e) => setNewSymbol(e.target.value)} style={{ padding: 8 }} />
-        <input placeholder="Số cổ phiếu" type="number" value={newShares} onChange={(e) => setNewShares(e.target.value)} style={{ padding: 8 }} />
-        <input placeholder="Giá vốn" type="number" value={newCost} onChange={(e) => setNewCost(e.target.value)} style={{ padding: 8 }} />
-        <button onClick={addHolding} style={{ padding: '8px 16px' }}>Thêm</button>
-      </div>
-      {status && <p>{status}</p>}
-
-      <h2 style={{ marginTop: 40 }}>Đánh giá một mã cổ phiếu</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <input placeholder="Nhập mã (VD: MSFT, IREN)" value={evalSymbol} onChange={(e) => setEvalSymbol(e.target.value.toUpperCase())} style={{ padding: 8, flex: 1 }} />
-        <button onClick={runEvaluation} style={{ padding: '8px 16px' }} disabled={loading}>
-          {loading ? 'Đang phân tích...' : 'Đánh giá'}
-        </button>
-      </div>
-
-      {evalResult && !evalResult.error && (
-        <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>{evalResult.symbol}</h3>
-            <span style={{
-              padding: '4px 12px', borderRadius: 6, color: 'white', fontWeight: 'bold',
-              background: recLabel[evalResult.recommendation]?.color || '#888'
-            }}>
-              {recLabel[evalResult.recommendation]?.text || evalResult.recommendation}
-            </span>
-          </div>
-          <p>Giá hiện tại: ${evalResult.raw_price} · Score: {evalResult.score_total}/100 · Confidence: {evalResult.confidence_score}/100 · Vai trò: {evalResult.portfolio_role}</p>
-
-          {evalResult.explanation && (
-            <div style={{ marginTop: 16 }}>
-              <p><b>Tại sao:</b> {evalResult.explanation.why}</p>
-              <p><b>Thay đổi gì:</b> {evalResult.explanation.what_changed}</p>
-              <p><b>Còn phù hợp mục tiêu không:</b> {evalResult.explanation.still_fits_goal}</p>
+                  ))}
+                </div>
+              )}
+              <DebugDetails data={watchlist} />
             </div>
           )}
+        </Section>
+
+        <a href="/portfolio/setup" className="text-blue-400 hover:text-blue-300 text-sm block mb-4">← Chỉnh sửa hồ sơ đầu tư</a>
+
+        {/* Holdings */}
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
+          <h2 className="text-lg font-bold mb-3">Danh mục đang giữ</h2>
+          {holdings.length === 0 ? (
+            <p className="text-sm text-gray-500">Chưa có mã nào</p>
+          ) : (
+            <div className="space-y-2 mb-4">
+              {holdings.map((h) => (
+                <div key={h.holding_id} className="bg-gray-800 rounded-lg p-3 flex justify-between items-center">
+                  <div>
+                    <span className="font-bold text-white">{h.symbol}</span>
+                    <span className="text-sm text-gray-400 ml-2">{h.shares} cp · ${h.avg_cost}</span>
+                  </div>
+                  <button onClick={() => removeHolding(h.holding_id)} className="text-red-400 hover:text-red-300 text-sm bg-red-950 px-3 py-1 rounded-lg">Xóa</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <h3 className="text-sm font-semibold text-gray-300 mb-2">Thêm mã mới vào danh mục</h3>
+          <div className="flex flex-wrap gap-2 mb-2">
+            <input placeholder="Mã (VD: MSFT)" value={newSymbol} onChange={(e) => setNewSymbol(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
+            <input placeholder="Số cổ phiếu" type="number" value={newShares} onChange={(e) => setNewShares(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
+            <input placeholder="Giá vốn" type="number" value={newCost} onChange={(e) => setNewCost(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
+            <button onClick={addHolding} className="bg-blue-700 hover:bg-blue-600 rounded-lg px-4 py-2 text-sm font-medium">Thêm</button>
+          </div>
+          {status && <p className="text-sm text-green-400">{status}</p>}
         </div>
-      )}
-      {evalResult?.error && <p style={{ color: 'red' }}>{evalResult.error}</p>}
+
+        {/* Evaluate a symbol */}
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
+          <h2 className="text-lg font-bold mb-3">Đánh giá một mã cổ phiếu</h2>
+          <div className="flex gap-2 mb-3">
+            <input
+              placeholder="Nhập mã (VD: MSFT, IREN)"
+              value={evalSymbol}
+              onChange={(e) => setEvalSymbol(e.target.value.toUpperCase())}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
+            />
+            <button onClick={runEvaluation} disabled={loading} className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded-lg px-4 py-2 text-sm font-medium">
+              {loading ? 'Đang phân tích...' : 'Đánh giá'}
+            </button>
+          </div>
+
+          {evalResult && !evalResult.error && (
+            <div className="bg-gray-800 rounded-xl p-4">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-bold">{evalResult.symbol}</h3>
+                <span className={`px-3 py-1 rounded-lg text-white text-sm font-bold ${recLabel[evalResult.recommendation]?.color || 'bg-gray-600'}`}>
+                  {recLabel[evalResult.recommendation]?.text || evalResult.recommendation}
+                </span>
+              </div>
+              <p className="text-sm text-gray-300 mb-2">
+                Giá hiện tại: ${evalResult.raw_price} · Score: {evalResult.score_total}/100 · Confidence: {evalResult.confidence_score}/100 · Vai trò: {evalResult.portfolio_role}
+              </p>
+              {evalResult.explanation && (
+                <div className="space-y-2 mt-3 text-sm text-gray-300">
+                  <p><span className="font-bold text-white">Tại sao:</span> {evalResult.explanation.why}</p>
+                  <p><span className="font-bold text-white">Thay đổi gì:</span> {evalResult.explanation.what_changed}</p>
+                  <p><span className="font-bold text-white">Còn phù hợp mục tiêu không:</span> {evalResult.explanation.still_fits_goal}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {evalResult?.error && <p className="text-sm text-red-400">{evalResult.error}</p>}
+        </div>
+      </div>
     </div>
   )
 }
