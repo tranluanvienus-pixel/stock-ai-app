@@ -4,6 +4,22 @@ import { useState, useEffect } from 'react'
 const USER_ID = 'vien_default'
 
 export default function Dashboard() {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_collapsed')
+      if (saved) setCollapsed(JSON.parse(saved))
+    } catch {}
+  }, [])
+
+  const toggleCollapse = (key: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [key]: !prev[key] }
+      try { localStorage.setItem('dashboard_collapsed', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
   const [holdings, setHoldings] = useState<any[]>([])
   const [newSymbol, setNewSymbol] = useState('')
   const [newShares, setNewShares] = useState('')
@@ -235,23 +251,33 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
     NEUTRAL: 'bg-gray-600',
   }
 
-  const Section = ({ icon, title, onRefresh, loading, error, children }: any) => (
+  const Section = ({ icon, title, onRefresh, loading, error, children, sectionKey }: any) => {
+  const isCollapsed = collapsed[sectionKey]
+  return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-base font-semibold text-white flex items-center gap-2">
-          <span>{icon}</span> {title}
-        </h3>
+      <div className="flex justify-between items-center" style={{ marginBottom: isCollapsed ? 0 : '0.75rem' }}>
+        <button onClick={() => toggleCollapse(sectionKey)} className="flex items-center gap-2 text-left flex-1">
+          <span className={`text-xs transition-transform ${isCollapsed ? '-rotate-90' : ''}`}>▼</span>
+          <h3 className="text-base font-semibold text-white flex items-center gap-2">
+            <span>{icon}</span> {title}
+          </h3>
+        </button>
         {onRefresh && (
           <button onClick={onRefresh} className="bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 text-sm">
             🔄
           </button>
         )}
       </div>
-      {loading && <p className="text-sm text-gray-400">Đang tải...</p>}
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {children}
+      {!isCollapsed && (
+        <>
+          {loading && <p className="text-sm text-gray-400">Đang tải...</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          {children}
+        </>
+      )}
     </div>
   )
+}
 
   const StatPill = ({ label, value, color }: any) => (
     <div className="bg-gray-800 rounded-lg px-3 py-2 text-sm">
@@ -346,54 +372,63 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
                   </span>
                 )}
               </h3>
-              <button onClick={loadAlerts} className="bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 text-sm">🔄</button>
-            </div>
-            {alertsLoading && <p className="text-sm text-gray-400">Đang tải...</p>}
-            {!alertsLoading && alerts.length === 0 && (
-              <p className="text-sm text-gray-500 italic">Chưa có thông báo nào. Thông báo sẽ tự động cập nhật mỗi phiên giao dịch.</p>
-            )}
-            {alerts.length > 0 && (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {(showAllAlerts ? alerts : alerts.slice(0, 5)).map((a) => {
-                  const actionColor: Record<string, string> = {
-                    buy_more: 'text-green-400 bg-green-950 border-green-900',
-                    trim: 'text-amber-400 bg-amber-950 border-amber-900',
-                    sell_all: 'text-red-400 bg-red-950 border-red-900',
-                    watch: 'text-gray-400 bg-gray-800 border-gray-700',
-                    hold: 'text-blue-400 bg-blue-950 border-blue-900',
-                  }
-                  const actionLabel: Record<string, string> = {
-                    buy_more: 'MUA THÊM',
-                    trim: 'CHỐT LỜI',
-                    sell_all: 'BÁN HẲN',
-                    watch: 'THEO DÕI',
-                    hold: 'GIỮ NGUYÊN',
-                  }
-                  return (
-                    <div key={a.alert_id} className={`rounded-lg p-3 border ${actionColor[a.recommendation] || 'bg-gray-800 border-gray-700 text-gray-300'} ${!a.seen ? 'ring-1 ring-blue-500' : ''}`}>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-white">{a.symbol}</span>
-                        <span className="text-sm font-bold">{actionLabel[a.recommendation] || a.recommendation}</span>
-                      </div>
-                      <div className="text-sm text-gray-300 mb-1">
-                        Giá: ${a.price_at_eval} · Điểm: {a.score_total} · Tin cậy: {a.confidence_score}%
-                      </div>
-                      {a.reasoning_text && <div className="text-sm text-gray-400 mb-1">{a.reasoning_text}</div>}
-                      <div className="text-xs text-gray-500">{new Date(a.created_at).toLocaleString('vi-VN')}</div>
-                    </div>
-                  )
-                })}
-                {alerts.length > 5 && (
-                  <button onClick={() => setShowAllAlerts(!showAllAlerts)} className="text-blue-400 hover:text-blue-300 text-sm">
-                    {showAllAlerts ? 'Thu gọn' : `Xem thêm ${alerts.length - 5} thông báo`}
-                  </button>
-                )}
+              <div className="flex items-center gap-2">
+                <button onClick={loadAlerts} className="bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 text-sm">🔄</button>
+                <button onClick={() => toggleCollapse('alerts')} className="text-gray-400 hover:text-white text-sm">
+                  {collapsed['alerts'] ? '▶' : '▼'}
+                </button>
               </div>
+            </div>
+            {!collapsed['alerts'] && (
+              <>
+                {alertsLoading && <p className="text-sm text-gray-400">Đang tải...</p>}
+                {!alertsLoading && alerts.length === 0 && (
+                  <p className="text-sm text-gray-500 italic">Chưa có thông báo nào. Thông báo sẽ tự động cập nhật mỗi phiên giao dịch.</p>
+                )}
+                {alerts.length > 0 && (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {(showAllAlerts ? alerts : alerts.slice(0, 5)).map((a) => {
+                      const actionColor: Record<string, string> = {
+                        buy_more: 'text-green-400 bg-green-950 border-green-900',
+                        trim: 'text-amber-400 bg-amber-950 border-amber-900',
+                        sell_all: 'text-red-400 bg-red-950 border-red-900',
+                        watch: 'text-gray-400 bg-gray-800 border-gray-700',
+                        hold: 'text-blue-400 bg-blue-950 border-blue-900',
+                      }
+                      const actionLabel: Record<string, string> = {
+                        buy_more: 'MUA THÊM',
+                        trim: 'CHỐT LỜI',
+                        sell_all: 'BÁN HẲN',
+                        watch: 'THEO DÕI',
+                        hold: 'GIỮ NGUYÊN',
+                      }
+                      return (
+                        <div key={a.alert_id} className={`rounded-lg p-3 border ${actionColor[a.recommendation] || 'bg-gray-800 border-gray-700 text-gray-300'} ${!a.seen ? 'ring-1 ring-blue-500' : ''}`}>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-bold text-white">{a.symbol}</span>
+                            <span className="text-sm font-bold">{actionLabel[a.recommendation] || a.recommendation}</span>
+                          </div>
+                          <div className="text-sm text-gray-300 mb-1">
+                            Giá: ${a.price_at_eval} · Điểm: {a.score_total} · Tin cậy: {a.confidence_score}%
+                          </div>
+                          {a.reasoning_text && <div className="text-sm text-gray-400 mb-1">{a.reasoning_text}</div>}
+                          <div className="text-xs text-gray-500">{new Date(a.created_at).toLocaleString('vi-VN')}</div>
+                        </div>
+                      )
+                    })}
+                    {alerts.length > 5 && (
+                      <button onClick={() => setShowAllAlerts(!showAllAlerts)} className="text-blue-400 hover:text-blue-300 text-sm">
+                        {showAllAlerts ? 'Thu gọn' : `Xem thêm ${alerts.length - 5} thông báo`}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
         {/* Market Regime */}
-        <Section icon="📊" title="Chế độ thị trường (Market Regime)" onRefresh={loadRegime} loading={regimeLoading} error={regime?.error}>
+        <Section icon="📊" title="Chế độ thị trường (Market Regime)" onRefresh={loadRegime} loading={regimeLoading} error={regime?.error} sectionKey="regime">
           {regime && !regime.error && (
             <div>
               <p className="text-xl font-bold text-white mb-2">{regime.regime || regime.marketRegime || 'N/A'}</p>
@@ -416,7 +451,7 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
         </Section>
 
         {/* Health Score */}
-        <Section icon="💊" title="Sức khỏe danh mục (Health Score)" onRefresh={loadHealth} loading={healthLoading} error={health?.error}>
+        <Section icon="💊" title="Sức khỏe danh mục (Health Score)" onRefresh={loadHealth} loading={healthLoading} error={health?.error} sectionKey="health">
           {health && !health.error && (
             <div>
               <p className="text-xl font-bold mb-2">
@@ -451,7 +486,7 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
         </Section>
 
         {/* Rebalance */}
-        <Section icon="⚖️" title="Đề xuất cân bằng lại (Rebalance)" onRefresh={loadRebalance} loading={rebalanceLoading} error={rebalance?.error}>
+        <Section icon="⚖️" title="Đề xuất cân bằng lại (Rebalance)" onRefresh={loadRebalance} loading={rebalanceLoading} error={rebalance?.error} sectionKey="rebalance">
           {rebalance && !rebalance.error && (
             <div>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -519,57 +554,66 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
 
         {/* Deploy Cash */}
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
-          <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
-            <h3 className="text-base font-semibold flex items-center gap-2">💰 Triển khai tiền mặt mới (Deploy Cash)</h3>
-            <div className="flex gap-2 items-center">
-              <span className="text-sm text-gray-400">Số tiền: $</span>
-              <input
-                type="number"
-                value={cashAmount}
-                onChange={(e) => setCashAmount(e.target.value)}
-                className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
-              />
-              <button onClick={loadDeployCash} className="bg-blue-700 hover:bg-blue-600 rounded-lg px-3 py-1.5 text-sm font-medium">Tính</button>
-            </div>
-          </div>
-          {deployLoading && <p className="text-sm text-gray-400">Đang tải...</p>}
-          {deployCash?.error && <p className="text-sm text-red-400">{deployCash.error}</p>}
-          {deployCash && !deployCash.error && (
-            <div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                <StatPill label="Tiền mới" value={`$${deployCash.newCashUsd?.toLocaleString()}`} />
-                <StatPill label="Đã triển khai" value={`$${deployCash.totalDeployedUsd?.toLocaleString()}`} color="text-green-400" />
-                <StatPill label="Còn lại" value={`$${deployCash.leftoverCashUsd?.toLocaleString()}`} color="text-amber-400" />
-                <StatPill label="Tổng danh mục sau" value={`$${deployCash.totalPortfolioValueAfterUsd?.toLocaleString()}`} />
+          <div className="flex flex-wrap justify-between items-center gap-2" style={{ marginBottom: collapsed['deploycash'] ? 0 : '0.75rem' }}>
+            <button onClick={() => toggleCollapse('deploycash')} className="flex items-center gap-2 text-left flex-1">
+              <span className={`text-xs transition-transform ${collapsed['deploycash'] ? '-rotate-90' : ''}`}>▼</span>
+              <h3 className="text-base font-semibold flex items-center gap-2">💰 Triển khai tiền mặt mới (Deploy Cash)</h3>
+            </button>
+            {!collapsed['deploycash'] && (
+              <div className="flex gap-2 items-center">
+                <span className="text-sm text-gray-400">Số tiền: $</span>
+                <input
+                  type="number"
+                  value={cashAmount}
+                  onChange={(e) => setCashAmount(e.target.value)}
+                  className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
+                />
+                <button onClick={loadDeployCash} className="bg-blue-700 hover:bg-blue-600 rounded-lg px-3 py-1.5 text-sm font-medium">Tính</button>
               </div>
-              {deployCash.recommendations?.length > 0 ? (
-                <div className="space-y-2">
-                 {deployCash.recommendations.map((r: any, i: number) => (
-  <div key={i} className="bg-gray-800 rounded-lg p-3">
-    <div className="flex justify-between items-center mb-1">
-      <span className="font-bold text-white">{r.symbol}</span>
-      <span className="text-green-400 font-bold">Mua thêm {r.sharesToAdd} cổ</span>
-    </div>
-    <div className="text-sm text-gray-400 mb-1">Chi phí: ${r.costUsd?.toLocaleString()}</div>
-    <div className="text-sm text-gray-400">{r.reason}</div>
-  </div>
-))} 
+            )}
+          </div>
+          {!collapsed['deploycash'] && (
+            <>
+              {deployLoading && <p className="text-sm text-gray-400">Đang tải...</p>}
+              {deployCash?.error && <p className="text-sm text-red-400">{deployCash.error}</p>}
+              {deployCash && !deployCash.error && (
+                <div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <StatPill label="Tiền mới" value={`$${deployCash.newCashUsd?.toLocaleString()}`} />
+                    <StatPill label="Đã triển khai" value={`$${deployCash.totalDeployedUsd?.toLocaleString()}`} color="text-green-400" />
+                    <StatPill label="Còn lại" value={`$${deployCash.leftoverCashUsd?.toLocaleString()}`} color="text-amber-400" />
+                    <StatPill label="Tổng danh mục sau" value={`$${deployCash.totalPortfolioValueAfterUsd?.toLocaleString()}`} />
+                  </div>
+                  {deployCash.recommendations?.length > 0 ? (
+                    <div className="space-y-2">
+                     {deployCash.recommendations.map((r: any, i: number) => (
+      <div key={i} className="bg-gray-800 rounded-lg p-3">
+        <div className="flex justify-between items-center mb-1">
+          <span className="font-bold text-white">{r.symbol}</span>
+          <span className="text-green-400 font-bold">Mua thêm {r.sharesToAdd} cổ</span>
+        </div>
+        <div className="text-sm text-gray-400 mb-1">Chi phí: ${r.costUsd?.toLocaleString()}</div>
+        <div className="text-sm text-gray-400">{r.reason}</div>
+      </div>
+    ))} 
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">Không có đề xuất mua mã nào lúc này.</p>
+                  )}
+                  {deployCash.reasonCodes?.length > 0 && (
+                    <ul className="space-y-1 text-sm text-gray-300 list-disc list-inside mt-3">
+                      {deployCash.reasonCodes.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                    </ul>
+                  )}
+                  <DebugDetails data={deployCash} />
                 </div>
-              ) : (
-                <p className="text-sm text-gray-500 italic">Không có đề xuất mua mã nào lúc này.</p>
               )}
-              {deployCash.reasonCodes?.length > 0 && (
-                <ul className="space-y-1 text-sm text-gray-300 list-disc list-inside mt-3">
-                  {deployCash.reasonCodes.map((r: string, i: number) => <li key={i}>{r}</li>)}
-                </ul>
-              )}
-              <DebugDetails data={deployCash} />
-            </div>
+            </>
           )}
         </div>
 
         {/* Watchlist */}
-        <Section icon="👁️" title="Danh sách theo dõi (Watchlist Engine)" onRefresh={loadWatchlist} loading={watchlistLoading} error={watchlist?.error}>
+        <Section icon="👁️" title="Danh sách theo dõi (Watchlist Engine)" onRefresh={loadWatchlist} loading={watchlistLoading} error={watchlist?.error} sectionKey="watchlist">
           {watchlist && !watchlist.error && (
             <div>
               {watchlist.summary && (
@@ -612,31 +656,40 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
 
         {/* Holdings */}
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
-          <h2 className="text-lg font-bold mb-3">Danh mục đang giữ</h2>
-          {holdings.length === 0 ? (
-            <p className="text-sm text-gray-500">Chưa có mã nào</p>
-          ) : (
-            <div className="space-y-2 mb-4">
-              {holdings.map((h) => (
-                <div key={h.holding_id} className="bg-gray-800 rounded-lg p-3 flex justify-between items-center">
-                  <div>
-                    <span className="font-bold text-white">{h.symbol}</span>
-                    <span className="text-sm text-gray-400 ml-2">{h.shares} cp · ${h.avg_cost}</span>
-                  </div>
-                  <button onClick={() => removeHolding(h.holding_id)} className="text-red-400 hover:text-red-300 text-sm bg-red-950 px-3 py-1 rounded-lg">Xóa</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">Thêm mã mới vào danh mục</h3>
-          <div className="flex flex-wrap gap-2 mb-2">
-            <input placeholder="Mã (VD: MSFT)" value={newSymbol} onChange={(e) => setNewSymbol(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
-            <input placeholder="Số cổ phiếu" type="number" value={newShares} onChange={(e) => setNewShares(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
-            <input placeholder="Giá vốn" type="number" value={newCost} onChange={(e) => setNewCost(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
-            <button onClick={addHolding} className="bg-blue-700 hover:bg-blue-600 rounded-lg px-4 py-2 text-sm font-medium">Thêm</button>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-lg font-bold">Danh mục đang giữ</h2>
+            <button onClick={() => toggleCollapse('holdings')} className="text-gray-400 hover:text-white text-sm">
+              {collapsed['holdings'] ? '▶' : '▼'}
+            </button>
           </div>
-          {status && <p className="text-sm text-green-400">{status}</p>}
+          {!collapsed['holdings'] && (
+            <>
+              {holdings.length === 0 ? (
+                <p className="text-sm text-gray-500">Chưa có mã nào</p>
+              ) : (
+                <div className="space-y-2 mb-4">
+                  {holdings.map((h) => (
+                    <div key={h.holding_id} className="bg-gray-800 rounded-lg p-3 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-white">{h.symbol}</span>
+                        <span className="text-sm text-gray-400 ml-2">{h.shares} cp · ${h.avg_cost}</span>
+                      </div>
+                      <button onClick={() => removeHolding(h.holding_id)} className="text-red-400 hover:text-red-300 text-sm bg-red-950 px-3 py-1 rounded-lg">Xóa</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <h3 className="text-sm font-semibold text-gray-300 mb-2">Thêm mã mới vào danh mục</h3>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <input placeholder="Mã (VD: MSFT)" value={newSymbol} onChange={(e) => setNewSymbol(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
+                <input placeholder="Số cổ phiếu" type="number" value={newShares} onChange={(e) => setNewShares(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
+                <input placeholder="Giá vốn" type="number" value={newCost} onChange={(e) => setNewCost(e.target.value)} className="flex-1 min-w-[100px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
+                <button onClick={addHolding} className="bg-blue-700 hover:bg-blue-600 rounded-lg px-4 py-2 text-sm font-medium">Thêm</button>
+              </div>
+              {status && <p className="text-sm text-green-400">{status}</p>}
+            </>
+          )}
         </div>
 
         {/* Evaluate a symbol */}
