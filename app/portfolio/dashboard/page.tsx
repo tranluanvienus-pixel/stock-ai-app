@@ -60,6 +60,13 @@ export default function Dashboard() {
       .catch(() => setDeployCash({ error: 'Lỗi khi tải Deploy Cash' }))
       .finally(() => setDeployLoading(false))
   }
+  const [profile, setProfile] = useState<any>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [editingCapital, setEditingCapital] = useState('')
+  const [savingCapital, setSavingCapital] = useState(false)
+  const [addFundsAmount, setAddFundsAmount] = useState('')
+  const [addingFunds, setAddingFunds] = useState(false)
+  const [profileStatus, setProfileStatus] = useState('')
   const [watchlist, setWatchlist] = useState<any>(null)
   const [watchlistLoading, setWatchlistLoading] = useState(false)
 
@@ -77,8 +84,19 @@ export default function Dashboard() {
       .then((r) => r.json())
       .then((d) => setHoldings(d.holdings || []))
   }
+  const loadProfile = () => {
+    setProfileLoading(true)
+    fetch(`/api/portfolio/profile?user_id=${USER_ID}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setProfile(d.profile)
+        setEditingCapital(d.profile?.capital_usd != null ? String(d.profile.capital_usd) : '')
+      })
+      .catch(() => setProfile(null))
+      .finally(() => setProfileLoading(false))
+  }
 
-  useEffect(() => { loadHoldings(); loadRegime(); loadHealth(); loadRebalance(); loadDeployCash(); loadWatchlist() }, [])
+  useEffect(() => { loadHoldings(); loadProfile(); loadRegime(); loadHealth(); loadRebalance(); loadDeployCash(); loadWatchlist() }, [])
 
   const addHolding = async () => {
     if (!newSymbol || !newShares || !newCost) return
@@ -113,6 +131,54 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
     setApplyingId(null)
     loadHoldings()
     loadRebalance()
+  }
+  const saveCapital = async () => {
+    if (!profile || editingCapital === '') return
+    setSavingCapital(true)
+    setProfileStatus('')
+    try {
+      const res = await fetch('/api/portfolio/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...profile,
+          capital_usd: Number(editingCapital),
+        }),
+      })
+      const data = await res.json()
+      setProfile(data.profile)
+      setProfileStatus('Đã cập nhật vốn ban đầu!')
+      loadRebalance()
+    } catch {
+      setProfileStatus('Lỗi khi lưu vốn ban đầu')
+    }
+    setSavingCapital(false)
+  }
+
+  const addFunds = async () => {
+    if (!addFundsAmount || Number(addFundsAmount) <= 0) return
+    setAddingFunds(true)
+    setProfileStatus('')
+    try {
+      const res = await fetch('/api/portfolio/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: USER_ID, amount: Number(addFundsAmount) }),
+      })
+      const data = await res.json()
+      if (data.error) {
+        setProfileStatus(`Lỗi: ${data.error}`)
+      } else {
+        setProfile(data.profile)
+        setEditingCapital(String(data.profile.capital_usd))
+        setAddFundsAmount('')
+        setProfileStatus(`Đã nạp thêm $${data.added.toLocaleString()}!`)
+        loadRebalance()
+      }
+    } catch {
+      setProfileStatus('Lỗi khi nạp thêm tiền')
+    }
+    setAddingFunds(false)
   }
   const runEvaluation = async () => {
     if (!evalSymbol) return
@@ -186,6 +252,68 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
     <div className="min-h-screen bg-gray-950 text-white p-3 font-sans">
       <div className="max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold text-blue-400 mb-4">📊 Dashboard danh mục</h1>
+        {/* Vốn đầu tư & Lãi/Lỗ */}
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
+          <h3 className="text-base font-semibold mb-3">💵 Vốn đầu tư</h3>
+          {profileLoading && <p className="text-sm text-gray-400">Đang tải hồ sơ...</p>}
+          {profile && (
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-sm text-gray-400">Vốn ban đầu: $</span>
+                <input
+                  type="number"
+                  value={editingCapital}
+                  onChange={(e) => setEditingCapital(e.target.value)}
+                  className="w-28 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
+                />
+                <button onClick={saveCapital} disabled={savingCapital} className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded-lg px-3 py-1.5 text-sm font-medium">
+                  {savingCapital ? 'Đang lưu...' : 'Lưu'}
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-sm text-gray-400">Nạp thêm tiền: $</span>
+                <input
+                  type="number"
+                  placeholder="VD: 5000"
+                  value={addFundsAmount}
+                  onChange={(e) => setAddFundsAmount(e.target.value)}
+                  className="w-28 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white placeholder-gray-500"
+                />
+                <button onClick={addFunds} disabled={addingFunds} className="bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg px-3 py-1.5 text-sm font-medium">
+                  {addingFunds ? 'Đang nạp...' : '+ Nạp tiền'}
+                </button>
+              </div>
+              {profileStatus && <p className="text-sm text-green-400 mb-3">{profileStatus}</p>}
+              {rebalance && !rebalance.error && profile.capital_usd != null && (() => {
+                const costBasis = holdings.reduce((sum, h) => sum + (h.avg_cost ?? 0) * (h.shares ?? 0), 0)
+                const cashUninvested = profile.capital_usd - costBasis
+                const holdingsPnl = (rebalance.totalPortfolioValueUsd ?? 0) - costBasis
+                const holdingsPnlPct = costBasis > 0 ? (holdingsPnl / costBasis) * 100 : 0
+                const isProfit = holdingsPnl >= 0
+                return (
+                  <div className="space-y-2">
+                    <div className="rounded-lg p-3 border bg-gray-800 border-gray-700">
+                      <div className="flex justify-between items-center flex-wrap gap-1">
+                        <span className="text-sm text-gray-300">💰 Tiền mặt chưa đầu tư</span>
+                        <span className="font-bold text-base text-blue-400">
+                          {cashUninvested.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`rounded-lg p-3 border ${isProfit ? 'bg-green-950 border-green-900' : 'bg-red-950 border-red-900'}`}>
+                      <div className="flex justify-between items-center flex-wrap gap-1">
+                        <span className="text-sm text-gray-300">📈 Lãi/Lỗ trên danh mục đang giữ</span>
+                        <span className={`font-bold text-base ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
+                          {isProfit ? '+' : ''}{holdingsPnl.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD ({isProfit ? '+' : ''}{holdingsPnlPct.toFixed(2)}%)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+        </div>
 
         {/* Market Regime */}
         <Section icon="📊" title="Chế độ thị trường (Market Regime)" onRefresh={loadRegime} loading={regimeLoading} error={regime?.error}>

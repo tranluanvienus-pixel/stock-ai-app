@@ -19,6 +19,7 @@ export interface RebalanceInput {
   cashReservePct: number;
   marketRegime: MarketRegimeLabel;
   minTradeThresholdPct?: number; // mặc định 3%, tránh đề xuất giao dịch vặt
+  totalCapitalUsd: number; // vốn cố định từ hồ sơ đầu tư — dùng làm mẫu số tính %, tránh co lại khi bán bớt cổ phiếu
 }
 
 // ─── Output types ─────────────────────────────────────────────
@@ -68,14 +69,16 @@ export function calculateRebalance(input: RebalanceInput): RebalanceResult {
     };
   }
 
-  // 1. Tính tổng giá trị danh mục hiện tại (theo giá thị trường)
+  // 1. Tính tổng giá trị danh mục hiện tại (theo giá thị trường) — chỉ để HIỂN THỊ,
+  // KHÔNG dùng làm mẫu số tính tỷ trọng (tránh vòng lặp co nhỏ khi bán bớt cổ phiếu)
   const totalPortfolioValueUsd = currentHoldings.reduce(
     (sum, h) => sum + h.shares * h.currentPrice,
     0
   );
 
   // 2. Dùng Water-Filling để tính tỷ trọng MỤC TIÊU lý tưởng,
-  // coi tổng giá trị hiện tại như "vốn" phân bổ lại từ đầu
+  // LUÔN dùng vốn cố định từ hồ sơ đầu tư (totalCapitalUsd) làm mẫu số — không co lại
+  // theo giá trị holdings hiện tại, tránh bug tự bán liên tục mỗi lần Áp dụng
   const candidates: CandidateStock[] = currentHoldings.map((h) => ({
     symbol: h.symbol,
     score_total: h.scoreTotal,
@@ -85,7 +88,7 @@ export function calculateRebalance(input: RebalanceInput): RebalanceResult {
   }));
 
   const sizingResult = calculateRebalanceWeights({
-    capital_usd: totalPortfolioValueUsd,
+    capital_usd: input.totalCapitalUsd,
     cash_reserve_pct: cashReservePct,
     investor_type: investorType,
     candidates,

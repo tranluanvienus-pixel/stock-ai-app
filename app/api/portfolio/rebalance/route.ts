@@ -109,6 +109,7 @@ export async function GET(req: NextRequest) {
     currentHoldings,
     investorType: profile.investor_type,
     cashReservePct: profile.cash_reserve_pct,
+    totalCapitalUsd: profile.capital_usd,
     marketRegime,
   });
 
