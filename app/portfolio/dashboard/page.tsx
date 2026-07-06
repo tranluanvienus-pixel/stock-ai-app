@@ -12,6 +12,8 @@ export default function Dashboard() {
   const [evalResult, setEvalResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
+  const [adjustShares, setAdjustShares] = useState<Record<string, number>>({})
+  const [applyingId, setApplyingId] = useState<string | null>(null)
   const [regime, setRegime] = useState<any>(null)
   const [regimeLoading, setRegimeLoading] = useState(false)
 
@@ -101,6 +103,17 @@ export default function Dashboard() {
     loadHoldings()
   }
 
+const applyShareChange = async (holdingId: string, newShares: number) => {
+    setApplyingId(holdingId)
+    await fetch('/api/portfolio/holdings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ holding_id: holdingId, shares: newShares }),
+    })
+    setApplyingId(null)
+    loadHoldings()
+    loadRebalance()
+  }
   const runEvaluation = async () => {
     if (!evalSymbol) return
     setLoading(true)
@@ -245,18 +258,48 @@ export default function Dashboard() {
               </div>
               {rebalance.recommendations?.length > 0 && (
                 <div className="space-y-2">
-                  {rebalance.recommendations.map((r: any, i: number) => (
-                    <div key={i} className={`rounded-lg p-3 border ${actionColor[r.action] || 'bg-gray-800 border-gray-700 text-gray-300'}`}>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-white text-base">{r.symbol}</span>
-                        <span className="text-sm font-bold">{r.action}</span>
-                      </div>
-                      <div className="text-sm text-gray-300 mb-1">
-                        Hiện tại: {r.currentShares} cp ({r.currentWeightPct}%) → Mục tiêu: {r.targetShares} cp ({r.targetWeightPct}%) · Điểm: {r.scoreTotal}
-                      </div>
-                      <div className="text-sm text-gray-400">{r.reason}</div>
-                    </div>
-                  ))}
+                {rebalance.recommendations.map((r: any, i: number) => {
+  const holding = holdings.find((h) => h.symbol === r.symbol)
+  const currentAdjust = adjustShares[r.symbol] ?? r.targetShares
+  return (
+    <div key={i} className={`rounded-lg p-3 border ${actionColor[r.action] || 'bg-gray-800 border-gray-700 text-gray-300'}`}>
+      <div className="flex justify-between items-center mb-1">
+        <span className="font-bold text-white text-base">{r.symbol}</span>
+        <span className="text-sm font-bold">{r.action}</span>
+      </div>
+      <div className="text-sm text-gray-300 mb-1">
+        Hiện tại: {r.currentShares} cp ({r.currentWeightPct}%) → Mục tiêu: {r.targetShares} cp ({r.targetWeightPct}%) · Điểm: {r.scoreTotal}
+      </div>
+      <div className="text-sm text-gray-400 mb-2">{r.reason}</div>
+      {holding && (
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-700/50">
+          <button
+            onClick={() => setAdjustShares((prev) => ({ ...prev, [r.symbol]: Math.max(0, currentAdjust - 1) }))}
+            className="bg-gray-700 hover:bg-gray-600 w-7 h-7 rounded text-sm font-bold"
+          >−</button>
+          <input
+            type="number"
+            value={currentAdjust}
+            onChange={(e) => setAdjustShares((prev) => ({ ...prev, [r.symbol]: Number(e.target.value) }))}
+            className="w-16 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-center text-white"
+          />
+          <button
+            onClick={() => setAdjustShares((prev) => ({ ...prev, [r.symbol]: currentAdjust + 1 }))}
+            className="bg-gray-700 hover:bg-gray-600 w-7 h-7 rounded text-sm font-bold"
+          >+</button>
+          <span className="text-xs text-gray-500">cổ</span>
+          <button
+            onClick={() => applyShareChange(holding.holding_id, currentAdjust)}
+            disabled={applyingId === holding.holding_id}
+            className="ml-auto bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded-lg px-3 py-1.5 text-sm font-medium"
+          >
+            {applyingId === holding.holding_id ? 'Đang áp dụng...' : '✓ Áp dụng'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+})}  
                 </div>
               )}
               {rebalance.reasonCodes?.length > 0 && (
@@ -296,15 +339,16 @@ export default function Dashboard() {
               </div>
               {deployCash.recommendations?.length > 0 ? (
                 <div className="space-y-2">
-                  {deployCash.recommendations.map((r: any, i: number) => (
-                    <div key={i} className="bg-gray-800 rounded-lg p-3">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-white">{r.symbol}</span>
-                        <span className="text-green-400 font-bold">${r.amountUsd?.toLocaleString?.() ?? r.amountUsd}</span>
-                      </div>
-                      <div className="text-sm text-gray-400">{r.reason}</div>
-                    </div>
-                  ))}
+                 {deployCash.recommendations.map((r: any, i: number) => (
+  <div key={i} className="bg-gray-800 rounded-lg p-3">
+    <div className="flex justify-between items-center mb-1">
+      <span className="font-bold text-white">{r.symbol}</span>
+      <span className="text-green-400 font-bold">Mua thêm {r.sharesToAdd} cổ</span>
+    </div>
+    <div className="text-sm text-gray-400 mb-1">Chi phí: ${r.costUsd?.toLocaleString()}</div>
+    <div className="text-sm text-gray-400">{r.reason}</div>
+  </div>
+))} 
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 italic">Không có đề xuất mua mã nào lúc này.</p>

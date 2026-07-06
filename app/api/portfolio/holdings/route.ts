@@ -31,3 +31,19 @@ export async function DELETE(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json()
+  const { holding_id, shares } = body
+  if (!holding_id || shares == null) {
+    return NextResponse.json({ error: 'Thiếu holding_id hoặc shares' }, { status: 400 })
+  }
+  const { data, error } = await supabaseAdmin
+    .from('portfolio_holdings')
+    .update({ shares })
+    .eq('holding_id', holding_id)
+    .select()
+    .single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ holding: data })
+}
