@@ -97,6 +97,14 @@ export default function Dashboard() {
   }
 
   useEffect(() => { loadHoldings(); loadProfile(); loadRegime(); loadHealth(); loadRebalance(); loadDeployCash(); loadWatchlist() }, [])
+  useEffect(() => {
+    if (!profile) return
+    const costBasis = holdings.reduce((sum, h) => sum + (h.avg_cost ?? 0) * (h.shares ?? 0), 0)
+    const uninvested = (profile.capital_usd ?? 0) - costBasis
+    if (uninvested > 0) {
+      setCashAmount(String(Math.round(uninvested)))
+    }
+  }, [profile, holdings])
 
   const addHolding = async () => {
     if (!newSymbol || !newShares || !newCost) return
