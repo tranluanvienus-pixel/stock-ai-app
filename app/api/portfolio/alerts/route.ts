@@ -76,3 +76,23 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+// Xóa một thông báo
+export async function DELETE(req: NextRequest) {
+  const alertId = req.nextUrl.searchParams.get("alert_id");
+
+  if (!alertId) {
+    return NextResponse.json({ error: "Thiếu alert_id" }, { status: 400 });
+  }
+
+  const { error } = await supabaseAdmin
+    .from("alerts_queue")
+    .delete()
+    .eq("alert_id", alertId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}
