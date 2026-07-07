@@ -341,7 +341,7 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
                     <div className="rounded-lg p-3 border bg-gray-800 border-gray-700">
                       <div className="flex justify-between items-center flex-wrap gap-1">
                         <span className="text-sm text-gray-300">💰 Tiền mặt chưa đầu tư</span>
-                        <span className="font-bold text-base text-blue-400">
+                        <span className={`font-bold text-base ${cashUninvested < 0 ? 'text-red-400' : 'text-blue-400'}`}>
                           {cashUninvested.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD
                         </span>
                       </div>
