@@ -23,6 +23,7 @@ async function evaluateWithRetry(baseUrl: string, symbol: string, maxRetries = 2
 }
 
 export async function GET(req: NextRequest) {
+  console.log("CRON TRIGGERED at", new Date().toISOString());
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -111,6 +112,7 @@ export async function GET(req: NextRequest) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
+  console.log("CRON RESULT:", results.length, "evaluated,", failedSymbols.length, "failed", failedSymbols);
   return NextResponse.json({
     message: "Daily check hoàn tất",
     evaluated: results.length,
