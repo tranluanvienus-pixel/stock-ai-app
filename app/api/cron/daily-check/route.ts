@@ -90,6 +90,7 @@ export async function GET(req: NextRequest) {
           recommendation: evalData.recommendation ?? "hold",
           reasoning_text: evalData.explanation?.why ?? "",
           previous_eval_id: prevEval?.eval_id ?? null,
+          data_snapshot: evalData.data_snapshot ?? null,
         })
         .select()
         .single();
