@@ -697,6 +697,14 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
                       <div>
                         <span className="font-bold text-white">{h.symbol}</span>
                         <span className="text-sm text-gray-400 ml-2">{h.shares} cp · ${h.avg_cost}</span>
+{h.price_at_eval != null && (
+  <div className="text-sm mt-1">
+    <span className="text-gray-500">Giá gần nhất: ${h.price_at_eval}</span>
+    <span className={`ml-2 font-bold ${h.pnl_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+      {h.pnl_usd >= 0 ? '+' : ''}{h.pnl_usd.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD ({h.pnl_usd >= 0 ? '+' : ''}{h.pnl_pct.toFixed(2)}%)
+    </span>
+  </div>
+)}
                       </div>
                       <button onClick={() => removeHolding(h.holding_id)} className="text-red-400 hover:text-red-300 text-sm bg-red-950 px-3 py-1 rounded-lg">Xóa</button>
                     </div>

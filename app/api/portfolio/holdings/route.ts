@@ -7,9 +7,37 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'Thiếu user_id' }, { status: 400 })
   const { data, error } = await supabaseAdmin.from('portfolio_holdings').select('*').eq('user_id', userId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ holdings: data })
-}
 
+  const holdings = data || []
+  const symbols = holdings.map((h) => h.symbol)
+
+  let latestPriceBySymbol: Record<string, number> = {}
+  if (symbols.length > 0) {
+    const { data: evalRows } = await supabaseAdmin
+      .from('evaluation_history')
+      .select('symbol, price_at_eval, eval_date')
+      .eq('user_id', userId)
+      .in('symbol', symbols)
+      .order('eval_date', { ascending: false })
+
+    if (evalRows) {
+      for (const row of evalRows) {
+        if (!(row.symbol in latestPriceBySymbol)) {
+          latestPriceBySymbol[row.symbol] = row.price_at_eval
+        }
+      }
+    }
+  }
+
+  const holdingsWithPnl = holdings.map((h) => {
+    const priceAtEval = latestPriceBySymbol[h.symbol] ?? null
+    const pnlUsd = priceAtEval != null ? (priceAtEval - h.avg_cost) * h.shares : null
+    const pnlPct = priceAtEval != null && h.avg_cost > 0 ? ((priceAtEval - h.avg_cost) / h.avg_cost) * 100 : null
+    return { ...h, price_at_eval: priceAtEval, pnl_usd: pnlUsd, pnl_pct: pnlPct }
+  })
+
+  return NextResponse.json({ holdings: holdingsWithPnl })
+}
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { data, error } = await supabaseAdmin.from('portfolio_holdings').insert({
