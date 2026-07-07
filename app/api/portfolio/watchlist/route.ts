@@ -50,10 +50,7 @@ export async function GET(req: NextRequest) {
 
   for (const row of watchlistRows) {
     try {
-      const [evalData, analyzeData] = await Promise.all([
-        fetchWithRetry(`${baseUrl}/api/portfolio/evaluate?symbol=${row.symbol}`, 2),
-        fetchWithRetry(`${baseUrl}/api/analyze`, 1).catch(() => null), // fallback nếu /api/analyze cần POST, xử lý riêng bên dưới
-      ]);
+      const evalData = await fetchWithRetry(`${baseUrl}/api/portfolio/evaluate?symbol=${row.symbol}`, 2);
 
       // /api/analyze yêu cầu POST, không phải GET -> gọi đúng cách
       const analyzeRes = await fetch(`${baseUrl}/api/analyze`, {
