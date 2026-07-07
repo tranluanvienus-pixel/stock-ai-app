@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 
+export const dynamic = "force-dynamic";
+
 const USER_ID = "vien_default";
 
 async function evaluateWithRetry(baseUrl: string, symbol: string, maxRetries = 2): Promise<any> {
