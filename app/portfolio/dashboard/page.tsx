@@ -26,6 +26,8 @@ export default function Dashboard() {
   const [newCost, setNewCost] = useState('')
   const [evalSymbol, setEvalSymbol] = useState('')
   const [evalResult, setEvalResult] = useState<any>(null)
+  const [historyData, setHistoryData] = useState<any[]>([])
+const [historyLoading, setHistoryLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [adjustShares, setAdjustShares] = useState<Record<string, number>>({})
@@ -214,6 +216,18 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
       setProfileStatus('Lỗi khi nạp thêm tiền')
     }
     setAddingFunds(false)
+  }
+  const loadHistory = async () => {
+    if (!evalSymbol) return
+    setHistoryLoading(true)
+    try {
+      const res = await fetch(`/api/portfolio/history?symbol=${evalSymbol}&user_id=${USER_ID}`)
+      const data = await res.json()
+      setHistoryData(data.history || [])
+    } catch {
+      setHistoryData([])
+    }
+    setHistoryLoading(false)
   }
   const runEvaluation = async () => {
     if (!evalSymbol) return
@@ -737,7 +751,30 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
             <button onClick={runEvaluation} disabled={loading} className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded-lg px-4 py-2 text-sm font-medium">
               {loading ? 'Đang phân tích...' : 'Đánh giá'}
             </button>
+            <button onClick={loadHistory} disabled={historyLoading} className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg px-4 py-2 text-sm font-medium">
+            {historyLoading ? 'Đang tải...' : '📜 Xem lịch sử'}
+          </button>
           </div>
+          {historyData.length > 0 && (
+          <div className="bg-gray-800 rounded-xl p-4 mb-3 space-y-2 max-h-96 overflow-y-auto">
+            <h3 className="text-sm font-semibold text-gray-300 mb-2">📜 Lịch sử đánh giá — {evalSymbol}</h3>
+            {historyData.map((h: any) => (
+              <details key={h.eval_id} className="bg-gray-900 rounded-lg p-3">
+                <summary className="cursor-pointer flex flex-wrap justify-between items-center gap-2">
+                  <span className="text-sm text-gray-400">{new Date(h.eval_date).toLocaleDateString('vi-VN')}</span>
+                  <span className={`px-2 py-0.5 rounded-lg text-white text-xs font-bold ${recLabel[h.recommendation]?.color || 'bg-gray-600'}`}>
+                    {recLabel[h.recommendation]?.text || h.recommendation}
+                  </span>
+                  <span className="text-sm text-gray-300">Giá: ${h.price_at_eval} · Điểm: {h.score_total}/100</span>
+                </summary>
+                {h.reasoning_text && <p className="text-sm text-gray-400 mt-2">{h.reasoning_text}</p>}
+                {h.data_snapshot && (
+                  <pre className="whitespace-pre-wrap text-xs bg-gray-950 rounded-lg p-3 mt-2 overflow-x-auto text-gray-500">{JSON.stringify(h.data_snapshot, null, 2)}</pre>
+                )}
+              </details>
+            ))}
+          </div>
+        )}
 
           {evalResult && !evalResult.error && (
             <div className="bg-gray-800 rounded-xl p-4">
