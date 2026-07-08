@@ -177,6 +177,7 @@ export type EvaluateStockResult = {
   portfolio_role: PortfolioRole
   score_total: number
   confidence_score: number
+  data_completeness_pct: number
   reason_codes: string[]
   score_breakdown: Subscores & { penalty: number; weights: Weights }
 }
@@ -195,6 +196,7 @@ export function evaluateStock(input: EvaluateStockInput): EvaluateStockResult {
     portfolio_role: role,
     score_total: finalScore,
     confidence_score: confidence,
+    data_completeness_pct: input.confidenceSignals.data_completeness_pct,
     reason_codes: reasonCodes,
     score_breakdown: { ...input.subscores, penalty, weights },
   }

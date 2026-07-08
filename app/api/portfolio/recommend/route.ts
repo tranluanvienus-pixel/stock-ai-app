@@ -83,6 +83,8 @@ export async function GET(req: NextRequest) {
     max_position_pct: maxPositionPct,
     allow_ai_sell: profile.allow_ai_sell,
     is_currently_held: isCurrentlyHeld,
+    confidence_score: scoringResult.confidence_score,
+    data_completeness_pct: scoringResult.data_completeness_pct,
   })
 
   const allReasonCodes = [...scoringResult.reason_codes, ...recResult.reason_codes]
