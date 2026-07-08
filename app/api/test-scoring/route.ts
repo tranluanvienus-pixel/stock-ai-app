@@ -27,6 +27,7 @@ export async function GET() {
     },
     confidenceSignals: {
       data_quality_issue: false,
+      data_completeness_pct: 100, // test giả định dữ liệu đầy đủ
       signals_conflict: true, // valuation xấu nhưng momentum/catalyst tốt -> mâu thuẫn
       earnings_within_5_days: false,
       conflicting_recent_news: false,
@@ -57,6 +58,7 @@ export async function GET() {
     },
     confidenceSignals: {
       data_quality_issue: false,
+      data_completeness_pct: 100, // test giả định dữ liệu đầy đủ
       signals_conflict: false,
       earnings_within_5_days: false,
       conflicting_recent_news: false,

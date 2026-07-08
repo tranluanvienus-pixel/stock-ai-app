@@ -20,6 +20,7 @@ export const REASON_CODE_MEANINGS: Record<string, string> = {
   RISK01: 'Tỷ trọng hoặc mức rủi ro đã vượt giới hạn cho phép',
   CAP_REACHED: 'Đã đạt tỷ trọng tối đa cho phép, dù cơ hội vẫn còn tốt',
   NO_SIGNIFICANT_CHANGE: 'Không có thay đổi đáng kể so với lần đánh giá gần nhất',
+  LOW_CONFIDENCE_OR_INCOMPLETE_DATA: 'Dữ liệu chưa đầy đủ hoặc độ tin cậy thấp — tạm thời chưa đưa ra khuyến nghị mua/bán, đề nghị theo dõi thêm',
 }
 
 export function translateReasonCodes(codes: string[]): string[] {

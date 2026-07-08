@@ -19,6 +19,8 @@ export type RecommendationInput = {
   max_position_pct: number // trần tỷ trọng cho investor_type hiện tại
   allow_ai_sell: boolean
   is_currently_held: boolean
+  confidence_score: number
+  data_completeness_pct: number
 }
 
 export type RecommendationResult = {
@@ -27,6 +29,10 @@ export type RecommendationResult = {
 }
 
 export function decideRecommendation(input: RecommendationInput): RecommendationResult {
+  // Cửa chặn an toàn: dữ liệu không đủ tin cậy thì không đưa MUA/BÁN
+  if (input.confidence_score < 60 || input.data_completeness_pct < 50) {
+    return { recommendation: 'watch', reason_codes: ['LOW_CONFIDENCE_OR_INCOMPLETE_DATA'] }
+  }
   const codes: string[] = []
   const isOverweight = input.current_weight_pct > input.max_position_pct + WEIGHT_OVERAGE_TOLERANCE
   const isUnderweight = input.current_weight_pct < input.max_position_pct - WEIGHT_OVERAGE_TOLERANCE
