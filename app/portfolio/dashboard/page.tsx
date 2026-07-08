@@ -787,6 +787,13 @@ const applyShareChange = async (holdingId: string, newShares: number) => {
               <p className="text-sm text-gray-300 mb-2">
                 Giá hiện tại: ${evalResult.raw_price} · Score: {evalResult.score_total}/100 · Confidence: {evalResult.confidence_score}/100 · Vai trò: {evalResult.portfolio_role}
               </p>
+              {evalResult.reason_texts && evalResult.reason_texts.length > 0 && (
+  <div className="mt-2 text-sm text-yellow-300">
+    {evalResult.reason_texts.map((r: string, i: number) => (
+      <p key={i}>• {r}</p>
+    ))}
+  </div>
+)}
               {evalResult.explanation && (
                 <div className="space-y-2 mt-3 text-sm text-gray-300">
                   <p><span className="font-bold text-white">Tại sao:</span> {evalResult.explanation.why}</p>
