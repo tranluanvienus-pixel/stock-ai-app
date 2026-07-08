@@ -29,6 +29,9 @@ export type AnalyzeApiResponse = {
   // revenueGrowth không nằm sẵn trong response cũ dưới tên rõ ràng,
   // nhưng company data có field này — bổ sung optional để không lỗi nếu thiếu
   companyRevenueGrowth?: number | null
+  pbRatio?: string | null
+  psRatio?: string | null
+  _debugGroqError?: string | null
 }
 
 // ---------- 1. Tính growth_momentum (0-100) ----------
@@ -151,7 +154,27 @@ function mapCompanyProfile(data: AnalyzeApiResponse): CompanyProfile {
 }
 
 // ---------- Ánh xạ Confidence Signals ----------
-function mapConfidenceSignals(
+// ---------- Tính % dữ liệu đầy đủ (Data Quality Score) ----------
+// Kiểm tra 8 tín hiệu dữ liệu quan trọng dùng trong tính điểm — nếu thiếu nhiều,
+// điểm số vẫn được tính (dùng giá trị mặc định) nhưng độ tin cậy cần giảm tương ứng
+function computeDataCompleteness(data: AnalyzeApiResponse): { pct: number; missingFields: string[] } {
+  const missingFields: string[] = []
+  let present = 0
+  const total = 8
+
+  const hasValuation = (data.peRatio !== null) || (data.pbRatio !== null) || (data.psRatio !== null)
+  if (hasValuation) present++; else missingFields.push('valuation (P/E, P/B, P/S)')
+
+  if (data.marketCap !== null) present++; else missingFields.push('marketCap')
+  if (data.returnOnEquity !== null) present++; else missingFields.push('returnOnEquity')
+  if (data.debtToEquity !== null) present++; else missingFields.push('debtToEquity')
+  if (data.beta !== null) present++; else missingFields.push('beta')
+  if (data.targetPrice !== null) present++; else missingFields.push('targetPrice')
+  if (data.newsScore !== null) present++; else missingFields.push('newsScore (Groq)')
+  if (!data._debugGroqError) present++; else missingFields.push('Groq analysis lỗi: ' + data._debugGroqError)
+
+  return { pct: Math.round((present / total) * 100), missingFields }
+} function mapConfidenceSignals (
   data: AnalyzeApiResponse,
   technicalTrend: number,
   valuation: number
@@ -161,8 +184,9 @@ function mapConfidenceSignals(
   const ivRank = parseFloat(data.indicators.ivRank) || 0
   const beta = data.beta ? parseFloat(data.beta) : null
 
+  const { pct: dataCompletenessPct } = computeDataCompleteness(data)
   return {
-    data_quality_issue: data.peRatio === null && data.marketCap === null,
+    data_quality_issue: dataCompletenessPct < 70,
     signals_conflict: Math.abs(technicalTrend - valuation) > 40,
     earnings_within_5_days: false, // sẽ có giá trị thật khi làm Catalyst Engine
     conflicting_recent_news: positiveNews > 0 && negativeNews > 0,
