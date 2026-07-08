@@ -133,6 +133,7 @@ function applyPenalty(role: PortfolioRole, profile: CompanyProfile): number {
 // ---------- 6. Confidence Score - ĐỘC LẬP với score_total ----------
 export type ConfidenceSignals = {
   data_quality_issue: boolean // dữ liệu thiếu/cũ (VD Alpha Vantage rate-limit fallback)
+  data_completeness_pct: number // % dữ liệu đầy đủ (0-100), từ computeDataCompleteness()
   signals_conflict: boolean // các yếu tố mâu thuẫn nhau (VD valuation tốt nhưng technical xấu)
   earnings_within_5_days: boolean
   conflicting_recent_news: boolean

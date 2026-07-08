@@ -187,6 +187,7 @@ function computeDataCompleteness(data: AnalyzeApiResponse): { pct: number; missi
   const { pct: dataCompletenessPct } = computeDataCompleteness(data)
   return {
     data_quality_issue: dataCompletenessPct < 70,
+    data_completeness_pct: dataCompletenessPct,
     signals_conflict: Math.abs(technicalTrend - valuation) > 40,
     earnings_within_5_days: false, // sẽ có giá trị thật khi làm Catalyst Engine
     conflicting_recent_news: positiveNews > 0 && negativeNews > 0,
